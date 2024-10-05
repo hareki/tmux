@@ -182,10 +182,13 @@ cmd_display_menu_get_position(struct client *tc, struct cmdq_item *item,
 		format_add(ft, "popup_centre_x", "%u", 0);
 	else
 		format_add(ft, "popup_centre_x", "%ld", n);
-	n = (tty->sy - 1) / 2 + h / 2;
+	n = (tty->sy + h ) / 2;
+	position = options_get_number(s->options, "status-position");
 	if (n >= tty->sy)
 		format_add(ft, "popup_centre_y", "%u", tty->sy - h);
-	else
+	else if (position == 0) // status bar is at the top => take that into account
+		format_add(ft, "popup_centre_y", "%ld", n + 1);
+	else 
 		format_add(ft, "popup_centre_y", "%ld", n);
 
 	/* Position of popup relative to mouse. */
