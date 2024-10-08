@@ -207,6 +207,7 @@ const struct options_name_map options_other_names[] = {
 	{ "display-panes-active-color", "display-panes-active-colour" },
 	{ "clock-mode-color", "clock-mode-colour" },
 	{ "cursor-color", "cursor-colour" },
+	{ "prompt-cursor-color", "prompt-cursor-colour" },
 	{ "pane-colors", "pane-colours" },
 	{ NULL, NULL }
 };
@@ -571,6 +572,18 @@ const struct options_table_entry options_table[] = {
 		  "If changed, the new value applies only to new panes."
 	},
 
+	{ .name = "initial-repeat-time",
+	  .type = OPTIONS_TABLE_NUMBER,
+	  .scope = OPTIONS_TABLE_SESSION,
+	  .minimum = 0,
+	  .maximum = 10000,
+	  .default_num = 0,
+	  .unit = "milliseconds",
+	  .text = "Time to wait for a key binding to repeat the first time the "
+	          "key is pressed, if it is bound with the '-r' flag. "
+	          "Subsequent presses use the 'repeat-time' option."
+	},
+
 	{ .name = "key-table",
 	  .type = OPTIONS_TABLE_STRING,
 	  .scope = OPTIONS_TABLE_SESSION,
@@ -658,7 +671,7 @@ const struct options_table_entry options_table[] = {
 	  .type = OPTIONS_TABLE_NUMBER,
 	  .scope = OPTIONS_TABLE_SESSION,
 	  .minimum = 0,
-	  .maximum = SHRT_MAX,
+	  .maximum = 10000,
 	  .default_num = 500,
 	  .unit = "milliseconds",
 	  .text = "Time to wait for a key binding to repeat, if it is bound "
@@ -817,6 +830,21 @@ const struct options_table_entry options_table[] = {
 	  .flags = OPTIONS_TABLE_IS_STYLE,
 	  .separator = ",",
 	  .text = "Style of the status line."
+	},
+
+	{ .name = "prompt-cursor-colour",
+	  .type = OPTIONS_TABLE_COLOUR,
+	  .scope = OPTIONS_TABLE_SESSION,
+	  .default_num = 6,
+	  .text = "Colour of the cursor when in the command prompt."
+	},
+
+	{ .name = "prompt-cursor-style",
+	  .type = OPTIONS_TABLE_CHOICE,
+	  .scope = OPTIONS_TABLE_SESSION,
+	  .choices = options_table_cursor_style_list,
+	  .default_num = 0,
+	  .text = "Style of the cursor when in the command prompt."
 	},
 
 	{ .name = "update-environment",
