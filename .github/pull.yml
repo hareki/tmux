@@ -2,7 +2,7 @@ version: "1"
 rules:
   - base: master
     upstream: tmux:master
-    mergeMethod: rebase
+    mergeMethod: merge
   - base: tmux-3.5a
     upstream: tmux:tmux-3.5a
-    mergeMethod: rebase
+    mergeMethod: merge
