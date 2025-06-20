@@ -429,6 +429,10 @@ window_copy_common_init(struct window_mode_entry *wme)
 	screen_init(&data->screen, screen_size_x(base), screen_size_y(base), 0);
 	screen_set_default_cursor(&data->screen, global_w_options);
 	data->modekeys = options_get_number(wp->window->options, "mode-keys");
+	data->screen.default_cstyle = SCREEN_CURSOR_BLOCK;   /* block shape      */
+	data->screen.default_mode  |= MODE_CURSOR_BLINKING;  /* turn blinking on */
+	data->screen.cstyle         = SCREEN_CURSOR_BLOCK;   /* live cursor      */
+	data->screen.mode          |= MODE_CURSOR_BLINKING;  /* live blink flag  */
 
 	evtimer_set(&data->dragtimer, window_copy_scroll_timer, wme);
 
