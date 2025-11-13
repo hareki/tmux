@@ -177,16 +177,36 @@ cmd_display_menu_get_pos(struct client *tc, struct cmdq_item *item,
 	format_add(ft, "popup_height", "%u", h);
 
 	/* Position so popup is in the centre. */
-	n = (long)(tty->sx - 1) / 2 - w / 2;
+	n = (long)(tty->sx - w) / 2;
 	if (n < 0)
 		format_add(ft, "popup_centre_x", "%u", 0);
 	else
 		format_add(ft, "popup_centre_x", "%ld", n);
-	n = (tty->sy - 1) / 2 + h / 2;
+
+  // Determine status bar visibility, size, and position
+	int statuslines = 0;
+	int statuslines_if_top = 0;
+	int statusat = status_at_line(tc); // Returns -1 if not visible
+	position = options_get_number(s -> options, "status-position"); // 0 for top, 1 for bottom
+
+	if (statusat != -1) {
+	    statuslines = status_line_size(tc); // Number of status lines
+	    if (position == 0)
+	        statuslines_if_top = statuslines;
+	    else
+	        statuslines_if_top = 0;
+	} else {
+	    statuslines = 0;
+	    statuslines_if_top = 0;
+	}
+
+	// Adjust vertical position calculation
+	n = (long)(tty -> sy - statuslines + h) / 2;
+
 	if (n >= tty->sy)
 		format_add(ft, "popup_centre_y", "%u", tty->sy - h);
 	else
-		format_add(ft, "popup_centre_y", "%ld", n);
+		format_add(ft, "popup_centre_y", "%ld", n + statuslines_if_top);
 
 	/* Position of popup relative to mouse. */
 	if (event->m.valid) {
@@ -410,11 +430,19 @@ cmd_display_popup_exec(struct cmd *self, struct cmdq_item *item)
 	if (!modify && tc->overlay_draw != NULL)
 		return (CMD_RETURN_NORMAL);
 
+  int statuslines = 0;
+	int statusat = status_at_line(tc); // Returns -1 if not visible
+	if (statusat != -1) {
+	    statuslines = status_line_size(tc); // Number of status lines
+	}
+
 	if (!modify) {
 		h = tty->sy / 2;
 		if (args_has(args, 'h')) {
-			h = args_percentage(args, 'h', 1, tty->sy, tty->sy,
-			    &cause);
+    // Exclude the border from the percentage by adding 2
+		// Subtract statuslines if the status bar is visible
+			h = args_percentage(args, 'h', 1, tty->sy - 1, tty->sy - 1,
+			    &cause) + 2;
 			if (cause != NULL) {
 				cmdq_error(item, "height %s", cause);
 				free(cause);
@@ -424,8 +452,9 @@ cmd_display_popup_exec(struct cmd *self, struct cmdq_item *item)
 
 		w = tty->sx / 2;
 		if (args_has(args, 'w')) {
+      // Exclude the border from the percentage by adding 2
 			w = args_percentage(args, 'w', 1, tty->sx, tty->sx,
-			    &cause);
+			    &cause) + 2;
 			if (cause != NULL) {
 				cmdq_error(item, "width %s", cause);
 				free(cause);
