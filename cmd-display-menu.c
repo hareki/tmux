@@ -314,7 +314,7 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 	const char		*border_style = args_get(args, 'S');
 	const char		*selected_style = args_get(args, 'H');
 	enum box_lines		 lines = BOX_LINES_DEFAULT;
-	char			*title, *cause;
+	char			*title, *cause = NULL;
 	int			 flags = 0, starting_choice = 0;
 	u_int			 px, py, i, count = args_count(args);
 	struct options		*o = target->s->curw->window->options;
@@ -332,8 +332,7 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 			    &cause);
 			if (cause != NULL) {
 				cmdq_error(item, "starting choice %s", cause);
-				free(cause);
-				return (CMD_RETURN_ERROR);
+				goto fail;
 			}
 		}
 	}
@@ -354,8 +353,7 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 
 		if (count - i < 2) {
 			cmdq_error(item, "not enough arguments");
-			menu_free(menu);
-			return (CMD_RETURN_ERROR);
+			goto fail;
 		}
 		key = args_string(args, i++);
 
@@ -367,17 +365,13 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 	}
 	if (menu == NULL) {
 		cmdq_error(item, "invalid menu arguments");
-		return (CMD_RETURN_ERROR);
+		goto fail;
 	}
-	if (menu->count == 0) {
-		menu_free(menu);
-		return (CMD_RETURN_NORMAL);
-	}
+	if (menu->count == 0)
+		goto out;
 	if (!cmd_display_menu_get_pos(tc, item, args, &px, &py, menu->width + 4,
-	    menu->count + 2)) {
-		menu_free(menu);
-		return (CMD_RETURN_NORMAL);
-	}
+	    menu->count + 2))
+		goto out;
 
 	value = args_get(args, 'b');
 	if (value != NULL) {
@@ -386,8 +380,7 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 		    &cause);
 		if (lines == -1) {
 			cmdq_error(item, "menu-border-lines %s", cause);
-			free(cause);
-			return (CMD_RETURN_ERROR);
+			goto fail;
 		}
 	}
 
@@ -399,6 +392,15 @@ cmd_display_menu_exec(struct cmd *self, struct cmdq_item *item)
 	    style, selected_style, border_style, target, NULL, NULL) != 0)
 		return (CMD_RETURN_NORMAL);
 	return (CMD_RETURN_WAIT);
+
+out:
+	menu_free(menu);
+	return (CMD_RETURN_NORMAL);
+
+fail:
+	free(cause);
+	menu_free(menu);
+	return (CMD_RETURN_ERROR);
 }
 
 static enum cmd_retval
