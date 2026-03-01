@@ -143,7 +143,7 @@ session_create(const char *prefix, const char *name, const char *cwd,
 			if (prefix != NULL)
 				xasprintf(&s->name, "%s-%u", prefix, s->id);
 			else
-				xasprintf(&s->name, "%u", s->id);
+				xasprintf(&s->name, "session-%u", s->id);
 		} while (RB_FIND(sessions, &sessions, s) != NULL);
 	}
 	RB_INSERT(sessions, &sessions, s);
