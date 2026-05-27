@@ -624,33 +624,39 @@ screen_write_fast_copy(struct screen_write_ctx *ctx, struct screen *src,
 	struct grid_line	*gl, *sgl;
 	struct grid_cell	 gc;
 	u_int			 xx, yy, cx = s->cx, cy = s->cy;
+	int			 yoff = 0;
+	struct visible_ranges	*r;
 
 	if (nx == 0 || ny == 0)
 		return;
+	if (wp != NULL)
+		yoff = wp->yoff;
 
 	for (yy = py; yy < py + ny; yy++) {
 		if (yy >= gd->hsize + gd->sy)
 			break;
 		s->cx = cx;
-		if (wp != NULL)
-			screen_write_initctx(ctx, &ttyctx, 0, 0);
+		screen_write_initctx(ctx, &ttyctx, 0, 0);
+		r = screen_redraw_get_visible_ranges(wp, px, s->cy + yoff, nx,
+		    NULL);
 		for (xx = px; xx < px + nx; xx++) {
 			gl = grid_get_line(gd, yy);
-			sgl = grid_get_line(ctx->s->grid, s->cy);
+			sgl = grid_get_line(s->grid, s->cy);
 			if (xx >= gl->cellsize && s->cx >= sgl->cellsize)
 				break;
+
 			grid_get_cell(gd, xx, yy, &gc);
 			if (xx + gc.data.width > px + nx)
 				break;
-			grid_view_set_cell(ctx->s->grid, s->cx, s->cy, &gc);
-			if (wp == NULL) {
-				s->cx++;
-				continue;
-			}
+			grid_view_set_cell(s->grid, s->cx, s->cy, &gc);
+
+			if (!screen_redraw_is_visible(r, px))
+				break;
 			ttyctx.cell = &gc;
 			ttyctx.flags &= (TTY_CTX_OVERLAY_SYNC|TTY_CTX_SYNC);
 			tty_write(tty_cmd_cell, &ttyctx);
 			ttyctx.ocx++;
+
 			s->cx++;
 		}
 		s->cy++;
@@ -1121,7 +1127,7 @@ screen_write_redraw_line(struct screen_write_ctx *ctx, struct tty_ctx *ttyctx,
 {
 	struct window_pane	*wp = ctx->wp;
 	struct screen		*s = ctx->s;
-	struct grid_cell	 gc;
+	struct grid_cell	 gc, ngc;
 	u_int			 sx = screen_size_x(s), cx, i, n;
 	u_int			 xoff = wp->xoff, yoff = wp->yoff;
 	struct visible_ranges	*r;
@@ -1136,9 +1142,15 @@ screen_write_redraw_line(struct screen_write_ctx *ctx, struct tty_ctx *ttyctx,
 		cx = ri->px - xoff;
 		for (n = 0; n < ri->nx && cx < sx; n++, cx++) {
 			grid_view_get_cell(s->grid, cx, yy, &gc);
+			if (~gc.flags & GRID_FLAG_SELECTED)
+				ttyctx->cell = &gc;
+			else {
+				screen_select_cell(s, &ngc, &gc);
+				ttyctx->cell = &ngc;
+			}
+
 			ttyctx->ocx = cx;
 			ttyctx->ocy = yy;
-			ttyctx->cell = &gc;
 			tty_write(tty_cmd_cell, ttyctx);
 		}
 	}
@@ -2347,15 +2359,18 @@ void
 screen_write_cell(struct screen_write_ctx *ctx, const struct grid_cell *gc)
 {
 	struct screen		*s = ctx->s;
+	struct window_pane	*wp = ctx->wp;
 	struct grid		*gd = s->grid;
 	const struct utf8_data	*ud = &gc->data;
 	struct grid_line	*gl;
 	struct grid_cell_entry	*gce;
-	struct grid_cell 	 tmp_gc, now_gc;
+	struct grid_cell	 tmp_gc, now_gc;
 	struct tty_ctx		 ttyctx;
 	u_int			 sx = screen_size_x(s), sy = screen_size_y(s);
-	u_int		 	 width = ud->width, xx, not_wrap;
-	int			 selected, skip = 1, redraw = 0;
+	u_int			 width = ud->width, xx, not_wrap, i, n, vis;
+	int			 selected, skip = 1, redraw = 0, yoff = 0;
+	struct visible_ranges	*r;
+	struct visible_range	*ri;
 
 	/* Ignore padding cells. */
 	if (gc->flags & GRID_FLAG_PADDING)
@@ -2453,6 +2468,12 @@ screen_write_cell(struct screen_write_ctx *ctx, const struct grid_cell *gc)
 	if (selected)
 		skip = 0;
 
+	/* Get visible ranges for the character before moving the cursor. */
+	if (wp != NULL)
+		yoff = wp->yoff;
+	r = screen_redraw_get_visible_ranges(wp, s->cx, s->cy + yoff, width,
+	    NULL);
+
 	/*
 	 * Move the cursor. If not wrapping, stick at the last character and
 	 * replace it.
@@ -2461,7 +2482,7 @@ screen_write_cell(struct screen_write_ctx *ctx, const struct grid_cell *gc)
 	if (s->cx <= sx - not_wrap - width)
 		screen_write_set_cursor(ctx, s->cx + width, -1);
 	else
-		screen_write_set_cursor(ctx,  sx - not_wrap, -1);
+		screen_write_set_cursor(ctx, sx - not_wrap, -1);
 
 	/* Create space for character in insert mode. */
 	if (s->mode & MODE_INSERT) {
@@ -2470,16 +2491,44 @@ screen_write_cell(struct screen_write_ctx *ctx, const struct grid_cell *gc)
 		tty_write(tty_cmd_insertcharacter, &ttyctx);
 	}
 
-	/* Write to the screen. */
-	if (!skip && !(s->mode & MODE_SYNC)) {
-		if (selected) {
-			screen_select_cell(s, &tmp_gc, gc);
-			ttyctx.cell = &tmp_gc;
-		} else
-			ttyctx.cell = gc;
-		if (redraw)
-			ttyctx.flags |= TTY_CTX_CELL_DRAW_LINE;
+	/* If not writing, done now. */
+	if (skip || s->mode & MODE_SYNC)
+		return;
+
+	/* Do a full line redraw if needed. */
+	if (redraw) {
+		screen_write_redraw_line(ctx, &ttyctx, s->cy);
+		return;
+	}
+
+	/* Work out the cell attributes. */
+	if (selected)
+		screen_select_cell(s, &tmp_gc, gc);
+	else
+		memcpy(&tmp_gc, gc, sizeof tmp_gc);
+	ttyctx.cell = &tmp_gc;
+
+	/* If the cell is fully visible, it can be written entirely. */
+	for (i = 0, vis = 0; i < r->used; i++)
+		vis += r->ranges[i].nx;
+	if (vis >= width) {
 		tty_write(tty_cmd_cell, &ttyctx);
+		return;
+	}
+
+	/*
+	 * Otherwise this is a wide character or tab partly obscured. Write
+	 * spaces in the visible regions.
+	 */
+	utf8_set(&tmp_gc.data, ' ');
+	for (i = 0; i < r->used; i++) {
+		ri = &r->ranges[i];
+		if (ri->nx == 0)
+			continue;
+		for (n = 0; n < ri->nx; n++) {
+			ttyctx.ocx = ri->px + n;
+			tty_write(tty_cmd_cell, &ttyctx);
+		}
 	}
 }
 
@@ -2488,12 +2537,15 @@ static int
 screen_write_combine(struct screen_write_ctx *ctx, const struct grid_cell *gc)
 {
 	struct screen		*s = ctx->s;
+	struct window_pane	*wp = ctx->wp;
 	struct grid		*gd = s->grid;
 	const struct utf8_data	*ud = &gc->data;
-	u_int			 n, cx = s->cx, cy = s->cy;
+	struct options		*oo = global_options;
+	u_int			 i, n, cx = s->cx, cy = s->cy, vis, yoff = 0;
 	struct grid_cell	 last;
 	struct tty_ctx		 ttyctx;
 	int			 force_wide = 0, zero_width = 0;
+	struct visible_ranges	*r;
 
 	/* Ignore U+3164 HANGUL_FILLER entirely. */
 	if (utf8_is_hangul_filler(ud))
@@ -2508,7 +2560,7 @@ screen_write_combine(struct screen_write_ctx *ctx, const struct grid_cell *gc)
 		zero_width = 1;
 	else if (utf8_is_vs(ud)) {
 		zero_width = 1;
-		if (options_get_number(global_options, "variation-selector-always-wide"))
+		if (options_get_number(oo, "variation-selector-always-wide"))
 			force_wide = 1;
 	} else if (ud->width == 0)
 		zero_width = 1;
@@ -2580,6 +2632,24 @@ screen_write_combine(struct screen_write_ctx *ctx, const struct grid_cell *gc)
 	grid_view_set_cell(gd, cx - n, cy, &last);
 	if (force_wide)
 		grid_view_set_padding(gd, cx - 1, cy);
+
+	/*
+	 * Check if all of this character is visible. No character will be
+	 * obscured in the middle, only on left or right, but there could be an
+	 * empty range in the visible ranges so we add them all up.
+	 */
+	if (wp != NULL)
+		yoff = wp->yoff;
+	r = screen_redraw_get_visible_ranges(wp, cx - n, cy + yoff, n, NULL);
+	for (i = 0, vis = 0; i < r->used; i++)
+		vis += r->ranges[i].nx;
+	if (vis < n) {
+		/*
+		 * Part of this character is obscured. Return 1 and let
+		 * screen_write_cell write a space.
+		 */
+		return (1);
+	}
 
 	/*
 	 * Redraw the combined cell. If forcing the cell to width 2, reset the
