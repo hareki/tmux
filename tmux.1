@@ -1205,6 +1205,7 @@ Kill the
 server and clients and destroy all sessions.
 .It Xo Ic kill\-session
 .Op Fl aCg
+.Op Fl f Ar filter
 .Op Fl t Ar target\-session
 .Xc
 Destroy the given session, closing any windows linked to it and no other
@@ -1212,6 +1213,12 @@ sessions, and detaching all clients attached to it.
 If
 .Fl a
 is given, all sessions but the specified one is killed.
+When
+.Fl a
+is given,
+.Fl f
+specifies a filter.
+Only sessions for which the filter is true are killed.
 If
 .Fl g
 is given and the session is in a session group, all sessions in the group are
@@ -3117,6 +3124,7 @@ the marked pane is used rather than the current pane.
 .Tg killp
 .It Xo Ic kill\-pane
 .Op Fl a
+.Op Fl f Ar filter
 .Op Fl t Ar target\-pane
 .Xc
 .D1 Pq alias: Ic killp
@@ -3124,11 +3132,18 @@ Destroy the given pane.
 If no panes remain in the containing window, it is also destroyed.
 The
 .Fl a
-option kills all but the pane given with
+option kills all panes in the window except the pane given with
 .Fl t .
+When
+.Fl a
+is given,
+.Fl f
+specifies a filter.
+Only panes for which the filter is true are killed.
 .Tg killw
 .It Xo Ic kill\-window
 .Op Fl a
+.Op Fl f Ar filter
 .Op Fl t Ar target\-window
 .Xc
 .D1 Pq alias: Ic killw
@@ -3137,8 +3152,14 @@ Kill the current window or the window at
 removing it from any sessions to which it is linked.
 The
 .Fl a
-option kills all but the window given with
+option kills all windows in the session except the window given with
 .Fl t .
+When
+.Fl a
+is given,
+.Fl f
+specifies a filter.
+Only windows for which the filter is true are killed.
 .Tg lastp
 .It Xo Ic last\-pane
 .Op Fl deZ
