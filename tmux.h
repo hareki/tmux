@@ -871,6 +871,10 @@ struct grid {
 	u_int			 hsize;
 	u_int			 hlimit;
 
+	u_int			 scroll_added;
+	u_int			 scroll_collected;
+	u_int			 scroll_generation;
+
 	struct grid_line	*linedata;
 };
 
@@ -1296,7 +1300,7 @@ struct window_pane {
 	char		 tty[TTY_NAME_MAX];
 	int		 status;
 	struct timeval	 dead_time;
-	struct cmdq_item *block_item;	/* new-pane -B: waiting for pane exit */
+	struct cmdq_item *wait_item;	/* new-pane -W: waiting for pane exit */
 
 	int		 fd;
 	struct bufferevent *event;
@@ -2673,10 +2677,6 @@ struct environ *environ_for_session(struct session *, int);
 void	tty_draw_line(struct tty *, struct screen *, u_int, u_int, u_int,
 	    u_int, u_int, const struct tty_style_ctx *);
 
-#ifdef ENABLE_SIXEL
-void	tty_draw_images(struct client *, struct window_pane *, struct screen *);
-#endif
-
 /* tty.c */
 void	tty_create_log(void);
 int	tty_window_bigger(struct tty *);
@@ -2754,6 +2754,7 @@ void	tty_cmd_setselection(struct tty *, const struct tty_ctx *);
 void	tty_cmd_rawstring(struct tty *, const struct tty_ctx *);
 #ifdef ENABLE_SIXEL
 void	tty_cmd_sixelimage(struct tty *, const struct tty_ctx *);
+void	tty_draw_images(struct client *, struct window_pane *, struct screen *);
 #endif
 void	tty_cmd_syncstart(struct tty *, const struct tty_ctx *);
 void	tty_default_colours(struct grid_cell *, struct window_pane *);
@@ -3216,6 +3217,7 @@ int	 grid_cells_look_equal(const struct grid_cell *,
 	     const struct grid_cell *);
 struct grid *grid_create(u_int, u_int, u_int);
 void	 grid_destroy(struct grid *);
+void	 grid_free_lines(struct grid *, u_int, u_int);
 int	 grid_compare(struct grid *, struct grid *);
 void	 grid_collect_history(struct grid *, int);
 void	 grid_remove_history(struct grid *, u_int );
@@ -3430,7 +3432,7 @@ struct window	*window_find_by_id(u_int);
 void		 window_update_activity(struct window *);
 struct window	*window_create(u_int, u_int, u_int, u_int);
 void		 window_pane_set_event(struct window_pane *);
-void            window_pane_block_finish(struct window_pane *);
+void		 window_pane_wait_finish(struct window_pane *);
 struct window_pane *window_get_active_at(struct window *, u_int, u_int);
 struct window_pane *window_find_string(struct window *, const char *);
 int		 window_has_floating_panes(struct window *);
