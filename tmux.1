@@ -2322,6 +2322,11 @@ that line.
 (emacs: C\-Down)
 .Xc
 Scroll down.
+If
+.Ic mode\-keys
+is
+.Ic vi ,
+the cursor is fixed relative to the text.
 .It Xo
 .Ic scroll\-down\-and\-cancel
 .Xc
@@ -2363,6 +2368,11 @@ that line.
 (emacs: C\-Up)
 .Xc
 Scroll up.
+If
+.Ic mode\-keys
+is
+.Ic vi ,
+the cursor is fixed relative to the text.
 .It Xo
 .Ic search\-again
 (vi: n)
@@ -3307,33 +3317,76 @@ reverses the sort order.
 .It Xo Ic move\-pane
 .Op Fl bdfhv
 .Op Fl D Op Ar lines
+.Op Fl l Ar size
 .Op Fl L Op Ar columns
+.Op Fl P Ar position
 .Op Fl R Op Ar columns
+.Op Fl s Ar src\-pane
+.Op Fl t Ar dst\-pane
 .Op Fl U Op Ar lines
 .Op Fl X Ar x\-position
 .Op Fl Y Ar y\-position
-.Op Fl l Ar size
-.Op Fl s Ar src\-pane
-.Op Fl t Ar dst\-pane
+.Op Fl z Ar z\-index
 .Xc
 .D1 Pq alias: Ic movep
 Does the same as
 .Ic join\-pane ,
 except if given
-.Fl U ,
 .Fl D ,
-.Fl L
+.Fl L ,
+.Fl P ,
+.Fl R ,
+.Fl U ,
+.Fl X ,
+.Fl Y
 or
+.Fl z
+in which case move the target floating pane.
+.Fl D ,
+.Fl L ,
 .Fl R
-in which case move the target floating pane up, down, left or right by
+and
+.Fl U
+move it down, left, right or up by
 .Ar lines
 or
 .Ar columns
-(one if omitted);
+(one if omitted).
+.Fl P
+moves it to
+.Ar position ,
+which may be one of:
+.Bl -column "XXXXXXXXXXXXXXXXXX" "X"
+.It Sy "Position" Ta Sy "Meaning"
+.It Li "top-left" Ta "Top left"
+.It Li "top-centre" Ta "Top and horizontal centre"
+.It Li "top-right" Ta "Top right"
+.It Li "centre-left" Ta "Vertical centre and left"
+.It Li "centre" Ta "Centre"
+.It Li "centre-right" Ta "Vertical centre and right"
+.It Li "bottom-left" Ta "Bottom left"
+.It Li "bottom-centre" Ta "Bottom and horizontal centre"
+.It Li "bottom-right" Ta "Bottom right"
+.It Li "top-left-centre" Ta "Centre of top-left quadrant"
+.It Li "top-right-centre" Ta "Centre of top-right quadrant"
+.It Li "bottom-left-centre" Ta "Centre of bottom-left quadrant"
+.It Li "bottom-right-centre" Ta "Centre of botton-right quadrant"
+.It Li "front" Ta "Front of floating panes"
+.It Li "back" Ta "Back of floating panes"
+.It Li "forward" Ta "Forward one floating pane"
+.It Li "backward" Ta "Backward one floating pane"
+.It Li "forward-loop" Ta "Forward but back if already at front"
+.It Li "backward-loop" Ta "Backward but front if already at back"
+.El
+.Pp
 .Fl X
 and
 .Fl Y
-move to the an absolute position.
+move it to an absolute position.
+.Fl z
+moves the pane to the given
+.Ar z-index ,
+where zero is the front.
 .Tg movew
 .It Xo Ic move\-window
 .Op Fl abrdk
