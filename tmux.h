@@ -2032,6 +2032,8 @@ RB_HEAD(client_windows, client_window);
 #define CLIENT_PASTE_TIME_LIMIT 5
 
 /* Client connection. */
+#define PROMPT_INPUT_DONE 0x1
+#define PROMPT_INPUT_MOVE 0x2
 typedef int (*prompt_input_cb)(struct client *, void *, const char *, int);
 typedef void (*prompt_free_cb)(void *);
 typedef struct visible_ranges *(*overlay_check_cb)(struct client *, void *,
@@ -3616,6 +3618,7 @@ typedef const char** (*mode_tree_help_cb)(u_int *, const char**);
 u_int	 mode_tree_count_tagged(struct mode_tree_data *);
 void	*mode_tree_get_current(struct mode_tree_data *);
 const char *mode_tree_get_current_name(struct mode_tree_data *);
+void	 mode_tree_select_top(struct mode_tree_data *);
 void	 mode_tree_expand_current(struct mode_tree_data *);
 void	 mode_tree_collapse_current(struct mode_tree_data *);
 void	 mode_tree_expand(struct mode_tree_data *, uint64_t);
