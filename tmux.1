@@ -6715,6 +6715,7 @@ The following variables are available, where appropriate:
 .It Li "client_activity" Ta "" Ta "Time client last had activity"
 .It Li "client_cell_height" Ta "" Ta "Height of each client cell in pixels"
 .It Li "client_cell_width" Ta "" Ta "Width of each client cell in pixels"
+.It Li "client_colours" Ta "" Ta "Number of colours client supports"
 .It Li "client_control_mode" Ta "" Ta "1 if client is in control mode"
 .It Li "client_created" Ta "" Ta "Time client created"
 .It Li "client_discarded" Ta "" Ta "Bytes discarded when client behind"
@@ -7361,7 +7362,7 @@ See
 for possible values for
 .Ar prompt\-type .
 .It Xo Ic command\-prompt
-.Op Fl 1bCeFiklN
+.Op Fl 1bCeFiklNP
 .Op Fl I Ar inputs
 .Op Fl p Ar prompts
 .Op Fl t Ar target\-client
@@ -7441,6 +7442,8 @@ user exits the command prompt.
 makes
 .Em BSpace
 cancel an empty prompt.
+.Fl P
+opens a prompt inside a pane instead of on the status line.
 .Pp
 .Fl T
 tells
