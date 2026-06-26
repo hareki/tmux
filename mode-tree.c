@@ -794,8 +794,8 @@ mode_tree_no_tag(struct mode_tree_item *mti)
 }
 
 /*
- * Set the alignment of mti->name: -1 to align left, 0 (default) to not align,
- * or 1 to align right.
+ * Set the alignment of the item name: -1 to align left, 0 (default) to not
+ * align, or 1 to align right.
  */
 void
 mode_tree_align(struct mode_tree_item *mti, int align)
@@ -832,15 +832,19 @@ mode_tree_draw(struct mode_tree_data *mtd)
 	const char		*tag, *separator;
 	size_t			 n;
 	int			 keylen, alignlen[mtd->maxdepth + 1];
+	int			 dfg, dfg0;
 
 	if (mtd->line_size == 0)
 		return;
 
 	memcpy(&gc0, &grid_default_cell, sizeof gc0);
 	memcpy(&gc, &grid_default_cell, sizeof gc);
-	style_apply(&gc, oo, "mode-style", NULL);
+	style_apply(&gc, oo, "tree-mode-selection-style", NULL);
 	memcpy(&box_gc, &grid_default_cell, sizeof box_gc);
 	style_apply(&box_gc, oo, "tree-mode-border-style", NULL);
+
+	dfg = gc.fg;
+	dfg0 = gc0.fg;
 
 	w = mtd->width;
 	h = mtd->height;
@@ -927,8 +931,8 @@ mode_tree_draw(struct mode_tree_data *mtd)
 		width = prefix_width + text_width;
 
 		if (mti->tagged) {
-			gc.attr ^= GRID_ATTR_BRIGHT;
-			gc0.attr ^= GRID_ATTR_BRIGHT;
+			gc.fg = COLOUR_THEME_CYAN|COLOUR_FLAG_THEME;
+			gc0.fg = COLOUR_THEME_CYAN|COLOUR_FLAG_THEME;
 		}
 
 		if (i != mtd->current) {
@@ -965,8 +969,8 @@ mode_tree_draw(struct mode_tree_data *mtd)
 		free(prefix);
 
 		if (mti->tagged) {
-			gc.attr ^= GRID_ATTR_BRIGHT;
-			gc0.attr ^= GRID_ATTR_BRIGHT;
+			gc.fg = dfg;
+			gc0.fg = dfg0;
 		}
 	}
 	format_free(ft);
@@ -1140,6 +1144,7 @@ mode_tree_set_prompt(struct mode_tree_data *mtd, struct client *c,
 
 	mtp = xcalloc(1, sizeof *mtp);
 	mtp->mtd = mtd;
+	mtp->c = c;
 	mtp->inputcb = inputcb;
 	mtp->freecb = freecb;
 	mtp->data = data;
