@@ -1512,6 +1512,12 @@ struct layout_cell {
 	int		 xoff;
 	int		 yoff;
 
+	u_int		 saved_sx;
+	u_int		 saved_sy;
+
+	int		 saved_xoff;
+	int		 saved_yoff;
+
 	struct window_pane *wp;
 	struct layout_cells cells;
 
@@ -3412,7 +3418,8 @@ void	 screen_write_fast_copy(struct screen_write_ctx *, struct screen *,
 	     u_int, u_int, u_int, u_int);
 void	 screen_write_hline(struct screen_write_ctx *, u_int, int, int,
 	     enum box_lines, const struct grid_cell *);
-void	 screen_write_vline(struct screen_write_ctx *, u_int, int, int);
+void	 screen_write_vline(struct screen_write_ctx *, u_int, int, int,
+	     const struct grid_cell *);
 void	 screen_write_menu(struct screen_write_ctx *, struct menu *, int,
 	     enum box_lines, const struct grid_cell *, const struct grid_cell *,
 	     const struct grid_cell *);
@@ -3674,9 +3681,9 @@ void		 layout_resize_pane(struct window_pane *, enum layout_type,
 		     int, int);
 void		 layout_resize_pane_to(struct window_pane *, enum layout_type,
 		     u_int);
-void		 layout_resize_floating_pane(struct window_pane *,
+int		 layout_resize_floating_pane(struct window_pane *,
 		     enum layout_type, int, int, char **);
-void		 layout_resize_floating_pane_to(struct window_pane *,
+int		 layout_resize_floating_pane_to(struct window_pane *,
 		     enum layout_type, u_int, char **);
 void		 layout_assign_pane(struct layout_cell *, struct window_pane *,
 		     int);
@@ -3691,7 +3698,10 @@ struct layout_cell *layout_get_tiled_cell(struct cmdq_item *, struct args *,
 		     struct window *, struct window_pane *, int, char **);
 struct layout_cell *layout_get_floating_cell(struct cmdq_item *, struct args *,
 		     enum pane_lines, struct window *, struct window_pane *,
-		     char **);
+		     char **cause);
+int		 layout_floating_args_parse(struct cmdq_item *, struct args *,
+		     enum pane_lines, struct window *, u_int *, u_int *, int *,
+		     int *, char **);
 int		 layout_remove_tile(struct window *, struct layout_cell *);
 
 /* layout-custom.c */
