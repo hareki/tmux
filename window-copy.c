@@ -5158,6 +5158,9 @@ window_copy_write_line(struct window_mode_entry *wme,
 	else
 		content_sx = sx;
 
+	screen_write_cursormove(ctx, 0, py, 0);
+	screen_write_clearline(ctx, 8);
+
 	ft = format_create_defaults(NULL, NULL, NULL, NULL, wp);
 
 	style_apply(&gc, oo, "copy-mode-position-style", ft);
