@@ -61,8 +61,10 @@ static int	window_copy_line_number_mode(struct window_mode_entry *);
 static int	window_copy_line_number_is_absolute(struct window_mode_entry *);
 static int	window_copy_line_numbers_active(struct window_mode_entry *);
 static u_int	window_copy_line_number_width(struct window_mode_entry *);
-static u_int	window_copy_cursor_offset(struct window_mode_entry *, u_int, u_int);
-static u_int	window_copy_cursor_unoffset(struct window_mode_entry *, u_int, u_int);
+static u_int	window_copy_cursor_offset(struct window_mode_entry *, u_int,
+		    u_int);
+static u_int	window_copy_cursor_unoffset(struct window_mode_entry *, u_int,
+		    u_int);
 static void	window_copy_write_line(struct window_mode_entry *,
 		    struct screen_write_ctx *, u_int);
 static void	window_copy_write_lines(struct window_mode_entry *,
@@ -864,6 +866,7 @@ window_copy_scroll1(struct window_mode_entry *wme, struct window_pane *wp,
 	if (data->searchmark != NULL && !data->timeout)
 		window_copy_search_marks(wme, NULL, data->searchregex, 1);
 	window_copy_update_selection(wme, 1, 0);
+	window_pane_scrollbar_show(wp, 1);
 	window_copy_redraw_screen(wme);
 }
 
@@ -917,6 +920,7 @@ window_copy_pageup1(struct window_mode_entry *wme, int half_page)
 	if (data->searchmark != NULL && !data->timeout)
 		window_copy_search_marks(wme, NULL, data->searchregex, 1);
 	window_copy_update_selection(wme, 1, 0);
+	window_pane_scrollbar_show(wme->wp, 1);
 	window_copy_redraw_screen(wme);
 }
 
@@ -977,6 +981,7 @@ window_copy_pagedown1(struct window_mode_entry *wme, int half_page,
 	if (data->searchmark != NULL && !data->timeout)
 		window_copy_search_marks(wme, NULL, data->searchregex, 1);
 	window_copy_update_selection(wme, 1, 0);
+	window_pane_scrollbar_show(wme->wp, 1);
 	window_copy_redraw_screen(wme);
 	return (0);
 }
@@ -1793,7 +1798,7 @@ window_copy_cmd_history_bottom(struct window_copy_cmd_state *cs)
 	struct window_mode_entry	*wme = cs->wme;
 	struct window_copy_mode_data	*data = wme->data;
 	struct screen			*s = data->backing;
-	u_int				 oy;
+	u_int				 oy, old_oy = data->oy;
 
 	oy = screen_hsize(s) + data->cy - data->oy;
 	if (data->lineflag == LINE_SEL_RIGHT_LEFT && oy == data->endsely)
@@ -1806,6 +1811,8 @@ window_copy_cmd_history_bottom(struct window_copy_cmd_state *cs)
 	if (data->searchmark != NULL && !data->timeout)
 		window_copy_search_marks(wme, NULL, data->searchregex, 1);
 	window_copy_update_selection(wme, 1, 0);
+	if (data->oy != old_oy)
+		window_pane_scrollbar_show(wme->wp, 1);
 	return (WINDOW_COPY_CMD_REDRAW);
 }
 
@@ -1814,7 +1821,7 @@ window_copy_cmd_history_top(struct window_copy_cmd_state *cs)
 {
 	struct window_mode_entry	*wme = cs->wme;
 	struct window_copy_mode_data	*data = wme->data;
-	u_int				 oy;
+	u_int				 oy, old_oy = data->oy;
 
 	oy = screen_hsize(data->backing) + data->cy - data->oy;
 	if (data->lineflag == LINE_SEL_LEFT_RIGHT && oy == data->sely)
@@ -1827,6 +1834,8 @@ window_copy_cmd_history_top(struct window_copy_cmd_state *cs)
 	if (data->searchmark != NULL && !data->timeout)
 		window_copy_search_marks(wme, NULL, data->searchregex, 1);
 	window_copy_update_selection(wme, 1, 0);
+	if (data->oy != old_oy)
+		window_pane_scrollbar_show(wme->wp, 1);
 	return (WINDOW_COPY_CMD_REDRAW);
 }
 
@@ -3776,7 +3785,7 @@ window_copy_scroll_to(struct window_mode_entry *wme, u_int px, u_int py,
 {
 	struct window_copy_mode_data	*data = wme->data;
 	struct grid			*gd = data->backing->grid;
-	u_int				 offset, gap;
+	u_int				 offset, gap, old_oy = data->oy;
 
 	data->cx = px;
 
@@ -3800,6 +3809,8 @@ window_copy_scroll_to(struct window_mode_entry *wme, u_int px, u_int py,
 	if (!no_redraw && data->searchmark != NULL && !data->timeout)
 		window_copy_search_marks(wme, NULL, data->searchregex, 1);
 	window_copy_update_selection(wme, 1, 0);
+	if (data->oy != old_oy)
+		window_pane_scrollbar_show(wme->wp, 1);
 	if (!no_redraw)
 		window_copy_redraw_screen(wme);
 }
@@ -5282,7 +5293,10 @@ window_copy_redraw_lines(struct window_mode_entry *wme, u_int py, u_int ny)
 		return;
 	}
 
-	screen_write_start_pane(&ctx, wp, NULL);
+	if (window_pane_scrollbar_overlay_visible(wp))
+		screen_write_start(&ctx, &data->screen);
+	else
+		screen_write_start_pane(&ctx, wp, NULL);
 	for (i = py; i < py + ny; i++)
 		window_copy_write_line(wme, &ctx, i);
 	screen_write_cursormove(&ctx,
@@ -5290,7 +5304,7 @@ window_copy_redraw_lines(struct window_mode_entry *wme, u_int py, u_int ny)
 	    0);
 	screen_write_stop(&ctx);
 
-	wp->flags |= PANE_REDRAWSCROLLBAR;
+	window_pane_scrollbar_redraw(wp);
 }
 
 static void
@@ -6546,6 +6560,7 @@ window_copy_scroll_up(struct window_mode_entry *wme, u_int ny)
 	if (ny == 0)
 		return;
 	data->oy -= ny;
+	window_pane_scrollbar_show(wp, 1);
 
 	if (data->searchmark != NULL && !data->timeout)
 		window_copy_search_marks(wme, NULL, data->searchregex, 1);
@@ -6577,7 +6592,10 @@ window_copy_scroll_up(struct window_mode_entry *wme, u_int ny)
 		return;
 	}
 
-	screen_write_start_pane(&ctx, wp, NULL);
+	if (window_pane_scrollbar_overlay_visible(wp))
+		screen_write_start(&ctx, &data->screen);
+	else
+		screen_write_start_pane(&ctx, wp, NULL);
 	screen_write_cursormove(&ctx, 0, 0, 0);
 	screen_write_deleteline(&ctx, ny, 8);
 	window_copy_write_lines(wme, &ctx, screen_size_y(s) - ny, ny);
@@ -6592,7 +6610,7 @@ window_copy_scroll_up(struct window_mode_entry *wme, u_int ny)
 	    window_copy_cursor_offset(wme, data->cx, screen_size_x(s)), data->cy,
 	    0);
 	screen_write_stop(&ctx);
-	wp->flags |= PANE_REDRAWSCROLLBAR;
+	window_pane_scrollbar_redraw(wp);
 }
 
 static void
@@ -6611,6 +6629,7 @@ window_copy_scroll_down(struct window_mode_entry *wme, u_int ny)
 	if (ny == 0)
 		return;
 	data->oy += ny;
+	window_pane_scrollbar_show(wp, 1);
 
 	if (data->searchmark != NULL && !data->timeout)
 		window_copy_search_marks(wme, NULL, data->searchregex, 1);
@@ -6637,7 +6656,10 @@ window_copy_scroll_down(struct window_mode_entry *wme, u_int ny)
 		return;
 	}
 
-	screen_write_start_pane(&ctx, wp, NULL);
+	if (window_pane_scrollbar_overlay_visible(wp))
+		screen_write_start(&ctx, &data->screen);
+	else
+		screen_write_start_pane(&ctx, wp, NULL);
 	screen_write_cursormove(&ctx, 0, 0, 0);
 	screen_write_insertline(&ctx, ny, 8);
 	window_copy_write_lines(wme, &ctx, 0, ny);
@@ -6648,7 +6670,7 @@ window_copy_scroll_down(struct window_mode_entry *wme, u_int ny)
 	screen_write_cursormove(&ctx, window_copy_cursor_offset(wme, data->cx,
 	    screen_size_x(s)), data->cy, 0);
 	screen_write_stop(&ctx);
-	wp->flags |= PANE_REDRAWSCROLLBAR;
+	window_pane_scrollbar_redraw(wp);
 }
 
 static void
