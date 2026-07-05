@@ -1730,7 +1730,7 @@ layout_floating_args_parse(struct cmdq_item *item, struct args *args,
 				ox = 4;
 		}
 		w->last_new_pane_x = ox;
-	} else
+	} else if (args_has(args, 'X'))
 		if (lines != PANE_LINES_NONE)
 			ox += 1;
 	if (oy == INT_MAX) {
@@ -1742,7 +1742,7 @@ layout_floating_args_parse(struct cmdq_item *item, struct args *args,
 				oy = 2;
 		}
 		w->last_new_pane_y = oy;
-	} else
+	} else if (args_has(args, 'Y'))
 		if (lines != PANE_LINES_NONE)
 			oy += 1;
 
@@ -1774,7 +1774,7 @@ layout_remove_tile(struct window *w, struct layout_cell *lc)
 	int			 change;
 
 	if (lc->flags & LAYOUT_CELL_FLOATING)
-		return (0);
+		return (-1);
 
 	lcneighbour = layout_cell_get_neighbour(lc);
 	if (lcneighbour == NULL) {
@@ -1799,7 +1799,7 @@ layout_remove_tile(struct window *w, struct layout_cell *lc)
 	 */
 	if (lc->parent != NULL)
 		layout_set_size(lc, 0, 0, 0, 0);
-	return (1);
+	return (0);
 }
 
 /*
@@ -1816,14 +1816,14 @@ layout_insert_tile(struct window *w, struct layout_cell *lc)
 	if (lc == NULL)
 		fatalx("layout cell cannot be null when tiling");
 
-	lcparent = lc->parent;
-	if (lc->flags & LAYOUT_CELL_FLOATING)
-		return (1);
+	if (layout_cell_is_tiled(lc))
+		return (-1);
 
+	lcparent = lc->parent;
 	if (lcparent == NULL) {
 		/* Only pane in the layout. */
 		layout_set_size(lc, w->sx, w->sy, 0, 0);
-		return (1);
+		return (0);
 	}
 
 	type = lcparent->type;
@@ -1846,7 +1846,7 @@ layout_insert_tile(struct window *w, struct layout_cell *lc)
 		 */
 		lctiled = layout_cell_get_first_tiled(lcneighbour);
 		if (!layout_split_check_space(lctiled->wp, lcneighbour, type))
-			return (0);
+			return (-1);
 		layout_split_sizes(lcneighbour, -1, 0, type, &size1, &size2,
 		    &saved_size);
 		layout_resize_set_size(w, lc, type, size1);
@@ -1863,5 +1863,5 @@ layout_insert_tile(struct window *w, struct layout_cell *lc)
 	}
 	layout_resize_set_size(w, lc, type, size1);
 
-	return (1);
+	return (0);
 }
