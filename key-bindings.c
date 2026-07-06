@@ -439,8 +439,9 @@ key_bindings_init(void)
 		"bind -N 'Resize the pane right' -r C-Right { resize-pane -R }",
 
 		/* Menu keys */
-		"bind -N 'Display window menu' < { display-menu -xW -yW -T '#[align=centre]#{window_index}:#{window_name}' " DEFAULT_WINDOW_MENU " }",
-		"bind -N 'Display pane menu' > { display-menu -xP -yP -T '#[align=centre]#{pane_index} (#{pane_id})' " DEFAULT_PANE_MENU " }",
+		/* Pad menu title with a space on each side of the text */
+		"bind -N 'Display window menu' < { display-menu -xW -yW -T '#[align=centre] #{window_index}:#{window_name} ' " DEFAULT_WINDOW_MENU " }",
+		"bind -N 'Display pane menu' > { display-menu -xP -yP -T '#[align=centre] #{pane_index} (#{pane_id}) ' " DEFAULT_PANE_MENU " }",
 
 		/* Mouse button 1 down on pane. */
 		"bind -n MouseDown1Pane { select-pane -t=; send -M }",
