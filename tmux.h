@@ -1,4 +1,4 @@
-/* $OpenBSD: tmux.h,v 1.1396 2026/07/10 15:45:11 nicm Exp $ */
+/* $OpenBSD: tmux.h,v 1.1400 2026/07/13 15:03:03 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -1302,6 +1302,7 @@ struct window_pane {
 #define PANE_REDRAWSCROLLBAR 0x8000
 #define PANE_DESTROYED 0x10000
 #define PANE_CMDRUNNING 0x20000
+#define PANE_ACTIVITY 0x40000
 
 	bitstr_t	*sync_dirty;
 	u_int		 sync_dirty_size;
@@ -2127,6 +2128,8 @@ struct prompt_create_data {
 
 	struct grid_cell	 style;
 	struct grid_cell	 command_style;
+	const char		*style_str;
+	const char		*command_style_str;
 	enum screen_cursor_style cstyle;
 	enum screen_cursor_style command_cstyle;
 	int			 ccolour;
@@ -2496,6 +2499,8 @@ struct spawn_context {
 #define SPAWN_EMPTY 0x40
 #define SPAWN_ZOOM 0x80
 #define SPAWN_FLOATING 0x100
+#define SPAWN_HORIZONTAL 0x200
+#define SPAWN_SPLIT 0x400
 };
 
 /* Paste buffer. */
@@ -3670,6 +3675,8 @@ int		 window_has_floating_panes(struct window *);
 int		 window_has_pane(struct window *, struct window_pane *);
 int		 window_set_active_pane(struct window *, struct window_pane *,
 		     int);
+void		 window_fire_pane_moved(struct window_pane *, struct window *,
+		     int, struct window *, int);
 void		 window_update_focus(struct window *);
 void		 window_pane_update_focus(struct window_pane *);
 void		 window_redraw_active_switch(struct window *,
@@ -3840,10 +3847,13 @@ struct layout_cell *layout_get_tiled_cell(struct cmdq_item *, struct args *,
 		     struct window *, struct window_pane *, int, char **);
 struct layout_cell *layout_get_floating_cell(struct cmdq_item *, struct args *,
 		     enum pane_lines, struct window *, struct window_pane *,
-		     char **);
+		     int, char **);
 int		 layout_floating_args_parse(struct cmdq_item *, struct args *,
 		     enum pane_lines, struct window *, struct layout_geometry *,
 		     char **);
+int		 layout_split_floating_cell(struct layout_cell *,
+		     struct window *, struct layout_geometry *, enum pane_lines,
+		     int, char **);
 int		 layout_remove_tile(struct window *, struct layout_cell *);
 int		 layout_insert_tile(struct window *, struct layout_cell *);
 
