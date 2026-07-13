@@ -1,4 +1,4 @@
-.\" $OpenBSD: tmux.1,v 1.1135 2026/07/13 15:03:03 nicm Exp $
+.\" $OpenBSD: tmux.1,v 1.1137 2026/07/13 16:30:28 nicm Exp $
 .\"
 .\" Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
 .\"
@@ -2160,6 +2160,19 @@ before the target.
 .Xc
 Jump to the last mark.
 .It Xo
+.Ic line\-numbers\-on
+.Xc
+Show line numbers in copy mode.
+.It Xo
+.Ic line\-numbers\-off
+.Xc
+Hide line numbers in copy mode.
+.It Xo
+.Ic line\-numbers\-toggle
+(emacs: L)
+.Xc
+Toggle line numbers in copy mode.
+.It Xo
 .Ic middle\-line
 (vi: M)
 (emacs: M\-r)
@@ -3616,7 +3629,7 @@ but a different format may be specified with
 .Fl F .
 .Tg newp
 .It Xo Ic new\-pane
-.Op Fl bdefhIkLPvWZ
+.Op Fl bdefhIkLMPvWZ
 .Op Fl B Ar border\-lines
 .Op Fl c Ar start\-directory
 .Op Fl e Ar environment
@@ -3662,6 +3675,11 @@ to specify a percentage of the window size.
 .Fl B
 sets the pane border lines for floating panes; see
 .Ic pane\-border\-lines .
+.Fl M
+may be used when bound to a mouse drag key; the new floating pane is resized to
+follow the mouse drag.
+It has no effect with
+.Fl L .
 .Pp
 The
 .Fl L
@@ -7172,6 +7190,7 @@ The following variables are available, where appropriate:
 .It Li "copy_cursor_word" Ta "" Ta "Word under cursor in copy mode"
 .It Li "copy_cursor_x" Ta "" Ta "Cursor X position in copy mode"
 .It Li "copy_cursor_y" Ta "" Ta "Cursor Y position in copy mode"
+.It Li "copy_line_numbers" Ta "" Ta "1 if line numbers are shown in copy mode"
 .It Li "copy_position" Ta "" Ta "Position shown in the copy mode indicator"
 .It Li "copy_position_limit" Ta "" Ta "Limit shown in the copy mode indicator"
 .It Li "current_file" Ta "" Ta "Current configuration file"
@@ -7291,6 +7310,7 @@ The following variables are available, where appropriate:
 .It Li "prev_window_active" Ta "" Ta "1 if previous window in W: loop is active"
 .It Li "prev_window_index" Ta "" Ta "Index of previous window in W: loop"
 .It Li "rectangle_toggle" Ta "" Ta "1 if rectangle selection is activated"
+.It Li "refresh_active" Ta "" Ta "1 if copy mode refresh is active"
 .It Li "scroll_position" Ta "" Ta "Scroll position in copy mode"
 .It Li "scroll_region_lower" Ta "" Ta "Bottom of scroll region in pane"
 .It Li "scroll_region_upper" Ta "" Ta "Top of scroll region in pane"
