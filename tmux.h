@@ -1,4 +1,4 @@
-/* $OpenBSD: tmux.h,v 1.1433 2026/09/01 12:49:49 nicm Exp $ */
+/* $OpenBSD: tmux.h,v 1.1435 2026/09/08 08:37:56 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -60,6 +60,7 @@ struct input_ctx;
 struct input_request;
 struct input_requests;
 struct job;
+struct json_node;
 struct menu_data;
 struct mode_tree_data;
 struct mouse_event;
@@ -3749,6 +3750,7 @@ struct window_pane *window_pane_previous_by_number(struct window *,
 			struct window_pane *, u_int);
 int		 window_pane_index(struct window_pane *, u_int *);
 int		 window_pane_zindex(struct window_pane *, u_int *);
+int		 window_pane_last_index(struct window_pane *, u_int *);
 u_int		 window_count_panes(struct window *, int);
 void		 window_destroy_panes(struct window *);
 struct window_pane *window_pane_find_by_id_str(const char *);
@@ -4271,5 +4273,30 @@ struct hyperlinks	*hyperlinks_init(void);
 struct hyperlinks	*hyperlinks_copy(struct hyperlinks *);
 void			 hyperlinks_reset(struct hyperlinks *);
 void			 hyperlinks_free(struct hyperlinks *);
+
+/* json.c */
+struct json_node	*json_parse(const char *, char **);
+void			 json_destroy_node(struct json_node *);
+char			*json_to_string(struct json_node *);
+struct json_node	*json_find(struct json_node *, const char *);
+struct json_node	*json_array_first(struct json_node *);
+struct json_node	*json_array_next(struct json_node *);
+int			 json_get_string(struct json_node *, const char **);
+int			 json_get_number(struct json_node *, int64_t *);
+int			 json_get_boolean(struct json_node *, int *);
+int			 json_get_object(struct json_node *,
+			     struct json_node **);
+int			 json_get_array(struct json_node *,
+			     struct json_node **);
+int			 json_find_string(struct json_node *, const char *,
+			     const char **, char **);
+int			 json_find_number(struct json_node *, const char *,
+			     int64_t *, char **);
+int			 json_find_boolean(struct json_node *, const char *,
+			     int *, char **);
+int			 json_find_object(struct json_node *, const char *,
+			     struct json_node **, char **);
+int			 json_find_array(struct json_node *, const char *,
+			     struct json_node **, char **);
 
 #endif /* TMUX_H */
