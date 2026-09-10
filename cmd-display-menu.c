@@ -226,12 +226,18 @@ cmd_display_menu_get_menu_pos(struct client *tc, struct cmdq_item *item,
 	format_add(ft, "popup_width", "%u", w);
 	format_add(ft, "popup_height", "%u", h);
 
-	n = ((long)window->sx - 1) / 2 - w / 2;
+	/*
+	 * Centre exactly: the upstream formulas leave one cell too little
+	 * before the box and one too many after it.
+	 */
+	/* n = ((long)window->sx - 1) / 2 - w / 2; */
+	n = ((long)window->sx - w) / 2;
 	if (n < 0)
 		format_add(ft, "popup_centre_x", "%u", 0);
 	else
 		format_add(ft, "popup_centre_x", "%ld", n);
-	n = ((long)window->sy - 1) / 2 + h / 2;
+	/* n = ((long)window->sy - 1) / 2 + h / 2; */
+	n = ((long)window->sy + h) / 2;
 	if (n >= window->sy)
 		format_add(ft, "popup_centre_y", "%ld", max_y);
 	else
@@ -494,7 +500,9 @@ cmd_display_popup_exec(struct cmd *self, struct cmdq_item *item)
 			cmdq_error(item, "height %s", cause);
 			goto fail;
 		}
-		sy = ll;
+		/* Exclude the border from the percentage. */
+		/* sy = ll; */
+		sy = ll + (lines != PANE_LINES_NONE ? 2 : 0);
 	}
 
 	sx = w->sx / 2;
@@ -504,7 +512,9 @@ cmd_display_popup_exec(struct cmd *self, struct cmdq_item *item)
 			cmdq_error(item, "width %s", cause);
 			goto fail;
 		}
-		sx = ll;
+		/* Exclude the border from the percentage. */
+		/* sx = ll; */
+		sx = ll + (lines != PANE_LINES_NONE ? 2 : 0);
 	}
 
 	if (sx > w->sx)
