@@ -498,8 +498,9 @@ key_bindings_init(void)
 		"bind -Tmove -N 'Display move and resize menu' . { if -F '#{pane_floating_flag}' { display-menu -xP -yP -T '#[align=centre]Move & Resize' " DEFAULT_MOVE_RESIZE_MENU " } }",
 
 		/* Menu keys */
-		"bind -N 'Display window menu' < { display-menu -xW -yW -T '#[align=centre]#{window_index}:#{window_name}' " DEFAULT_WINDOW_MENU " }",
-		"bind -N 'Display pane menu' > { display-menu -xP -yP -T '#[align=centre]#{pane_index} (#{pane_id})' " DEFAULT_PANE_MENU " }",
+		/* Pad menu title with a space on each side of the text */
+		"bind -N 'Display window menu' < { display-menu -xW -yW -T '#[align=centre] #{window_index}:#{window_name} ' " DEFAULT_WINDOW_MENU " }",
+		"bind -N 'Display pane menu' > { display-menu -xP -yP -T '#[align=centre] #{pane_index} (#{pane_id}) ' " DEFAULT_PANE_MENU " }",
 
 		/* Mouse button 1 down on pane. */
 		"bind -n MouseDown1Pane { select-pane -t=; send -M }",
