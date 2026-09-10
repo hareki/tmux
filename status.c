@@ -650,7 +650,8 @@ status_message_redraw(struct client *c)
 	format_free(ft);
 
 	screen_write_start(&ctx, sl->active);
-	screen_write_fast_copy(&ctx, &sl->screen, 0, 0, c->tty.sx, lines);
+	/* Hide the status bar behind the prompt/message pill instead of overlaying it */
+	/* screen_write_fast_copy(&ctx, &sl->screen, 0, 0, c->tty.sx, lines); */
 	screen_write_cursormove(&ctx, ax, messageline, 0);
 	format_draw(&ctx, &gc, aw, expanded, NULL, 0);
 	screen_write_stop(&ctx);
@@ -918,7 +919,8 @@ status_prompt_redraw(struct client *c)
 		start = aw;
 
 	screen_write_start(&ctx, sl->active);
-	screen_write_fast_copy(&ctx, &sl->screen, 0, 0, c->tty.sx, lines);
+	/* Hide the status bar behind the prompt/message pill instead of overlaying it */
+	/* screen_write_fast_copy(&ctx, &sl->screen, 0, 0, c->tty.sx, lines); */
 	screen_write_cursormove(&ctx, ax, promptline, 0);
 	format_draw(&ctx, &gc, aw, expanded, NULL, 0);
 	screen_write_cursormove(&ctx, ax + start, promptline, 0);

@@ -27,7 +27,7 @@
 #include "tmux.h"
 
 struct sessions		sessions;
-u_int			next_session_id;
+u_int			next_session_id = 1;
 struct session_groups	session_groups = RB_INITIALIZER(&session_groups);
 
 static void	session_free(int, short, void *);
@@ -142,7 +142,7 @@ session_create(const char *prefix, const char *name, const char *cwd,
 			if (prefix != NULL)
 				xasprintf(&s->name, "%s-%u", prefix, s->id);
 			else
-				xasprintf(&s->name, "%u", s->id);
+				xasprintf(&s->name, "session-%u", s->id);
 		} while (RB_FIND(sessions, &sessions, s) != NULL);
 	}
 	RB_INSERT(sessions, &sessions, s);
