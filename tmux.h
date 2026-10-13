@@ -1,4 +1,4 @@
-/* $OpenBSD: tmux.h,v 1.1455 2026/10/09 13:12:14 nicm Exp $ */
+/* $OpenBSD: tmux.h,v 1.1457 2026/10/12 12:35:03 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -77,7 +77,7 @@ struct screen_write_cline;
 struct screen_write_ctx;
 struct session;
 
-#ifdef ENABLE_SIXEL
+#ifdef ENABLE_IMAGES
 struct sixel_image;
 #endif
 
@@ -638,6 +638,7 @@ enum tty_code_code {
 	TTYC_KUP6,
 	TTYC_KUP7,
 	TTYC_MS,
+	TTYC_NCV,
 	TTYC_NOBR,
 	TTYC_OL,
 	TTYC_OP,
@@ -1036,7 +1037,7 @@ struct style {
 	u_int			link;
 };
 
-#ifdef ENABLE_SIXEL
+#ifdef ENABLE_IMAGES
 /* Image. */
 struct image {
 	struct screen		*s;
@@ -1112,7 +1113,7 @@ struct screen {
 	bitstr_t			*tabs;
 	struct screen_sel		*sel;
 
-#ifdef ENABLE_SIXEL
+#ifdef ENABLE_IMAGES
 	struct images			 images;
 	struct images			 saved_images;
 #endif
@@ -1764,6 +1765,7 @@ struct tty_term {
 #define TERM_SIXEL 0x40
 #define TERM_INVALIDMS 0x80
 #define TERM_NOREPLACE 0x100
+#define TERM_KITTYGRAPHICS 0x200
 	int		 flags;
 
 	LIST_ENTRY(tty_term) entry;
@@ -1903,7 +1905,7 @@ struct tty_ctx {
 			size_t		 size;
 		} sel;
 
-#ifdef ENABLE_SIXEL
+#ifdef ENABLE_IMAGES
 		struct image		*image;
 #endif
 	};
@@ -3004,7 +3006,7 @@ void	tty_cmd_scrolldown(struct tty *, const struct tty_ctx *);
 void	tty_cmd_reverseindex(struct tty *, const struct tty_ctx *);
 void	tty_cmd_setselection(struct tty *, const struct tty_ctx *);
 void	tty_cmd_rawstring(struct tty *, const struct tty_ctx *);
-#ifdef ENABLE_SIXEL
+#ifdef ENABLE_IMAGES
 void	tty_cmd_sixelimage(struct tty *, const struct tty_ctx *);
 void	tty_draw_images(struct client *, struct window_pane *);
 #endif
@@ -3648,7 +3650,7 @@ void	 screen_write_setselection(struct screen_write_ctx *, const char *,
 	     u_char *, u_int);
 void	 screen_write_rawstring(struct screen_write_ctx *, u_char *, u_int,
 	     int);
-#ifdef ENABLE_SIXEL
+#ifdef ENABLE_IMAGES
 void	 screen_write_sixelimage(struct screen_write_ctx *,
 	     struct sixel_image *, u_int);
 #endif
@@ -3672,7 +3674,7 @@ int	 redraw_get_status_border_cell_type(struct redraw_span **, u_int);
 
 /* screen.c */
 void	 screen_init(struct screen *, u_int, u_int, u_int);
-void	 screen_reinit(struct screen *, int);
+void	 screen_reinit(struct screen *);
 void	 screen_free(struct screen *);
 void	 screen_reset_tabs(struct screen *);
 void	 screen_reset_hyperlinks(struct screen *);
@@ -4236,7 +4238,7 @@ void		 spawn_editor_finish(struct window_pane *);
 /* regsub.c */
 char		*regsub(const char *, const char *, const char *, int);
 
-#ifdef ENABLE_SIXEL
+#ifdef ENABLE_IMAGES
 /* image.c */
 int		 image_free_all(struct screen *);
 struct image	*image_store(struct screen *, struct sixel_image *);
