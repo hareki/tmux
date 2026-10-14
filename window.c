@@ -1,4 +1,4 @@
-/* $OpenBSD: window.c,v 1.385 2026/10/08 07:06:26 nicm Exp $ */
+/* $OpenBSD: window.c,v 1.386 2026/10/13 10:21:58 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -1670,6 +1670,7 @@ window_pane_free(struct window_pane *wp)
 	log_debug("pane %%%u freed (%d references)", wp->id, wp->references);
 
 	free(wp->searchstr);
+	free(wp->cmd_line);
 	screen_free(&wp->status_screen);
 	screen_free(&wp->base);
 	free(wp->r.ranges);
@@ -1777,6 +1778,10 @@ window_pane_resize(struct window_pane *wp, u_int sx, u_int sy)
 
 	log_debug("%s: %%%u resize %ux%u", __func__, wp->id, sx, sy);
 	screen_resize(&wp->base, sx, sy, wp->base.saved_grid == NULL);
+#ifdef ENABLE_IMAGES
+	if (sx > r->osx)
+		image_grid_resize_width(wp->base.grid, sx);
+#endif
 
 	wme = TAILQ_FIRST(&wp->modes);
 	if (wme != NULL && wme->mode->resize != NULL)
