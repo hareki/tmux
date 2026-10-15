@@ -21,12 +21,12 @@
 #define TMUX_IMAGE_H
 
 #ifdef ENABLE_IMAGES
-#error image support is not ready yet
 
 struct grid;
 struct grid_cell;
 struct grid_line;
 struct image;
+struct image_backend;
 struct image_line;
 struct image_store;
 struct screen;
@@ -37,41 +37,76 @@ struct tty;
 /* Maximum image size in bytes. */
 #define IMAGE_SIZE_LIMIT (64 * 1024 * 1024)
 
-/* View of all or part of an image. */
-struct image_view {
-	/* Position and size in the image, in pixels. */
-	u_int	 x;
-	u_int	 y;
-	u_int	 width;
-	u_int	 height;
+/* Backend draws images as graphics. */
+#define IMAGE_BACKEND_GRAPHICAL 0x1
 
-	/* Size after scaling, in pixels. */
-	u_int	 scaled_width;
-	u_int	 scaled_height;
+/* Backend images move with terminal scrolling. */
+#define IMAGE_BACKEND_SCROLLS 0x2
 
-	/* Destination canvas size and offset in pixels. */
+/* Source image and placement geometry. */
+struct image_geom {
+	/* Position and size within the source RGBA pixels. */
+	u_int	 src_x;
+	u_int	 src_y;
+	u_int	 src_w;
+	u_int	 src_h;
+
+	/* Actual image size in pixels, including padding. */
 	u_int	 canvas_width;
 	u_int	 canvas_height;
+
+	/* Content offset within the canvas, in pixels. */
 	u_int	 canvas_xoff;
 	u_int	 canvas_yoff;
 
-	/* Destination size in terminal cells. */
+	/* Scaled source size in pixels, excluding padding. */
+	double	 scaled_width;
+	double	 scaled_height;
+
+	/* Actual image size in cells, including padding. */
 	u_int	 sx;
 	u_int	 sy;
 };
 
+/* Bounds within a source image, in pixels. */
+struct image_bounds {
+	double	 left;
+	double	 top;
+	double	 right;
+	double	 bottom;
+	double	 area;
+};
+
+/* A part of an image to draw. */
+struct image_rect {
+	struct image	*image;
+
+	/* Size in cells. */
+	u_int		 sx;
+	u_int		 sy;
+
+	/* Source in image in cells. */
+	u_int		 src_x;
+	u_int		 src_y;
+
+	/* Destination on terminal in cells. */
+	u_int		 dst_x;
+	u_int		 dst_y;
+};
+
 /* image.c */
-struct image	*image_create(u_int, u_int, u_int, u_int, u_int, u_int,
-		     u_char *);
-struct image	*image_create_view(struct image *, struct image_view *);
+struct image	*image_create(struct image_geom *, u_char *);
+struct image	*image_create_with_parent(struct image *, struct image_geom *,
+		     size_t, u_char *);
 struct image	*image_find(u_int);
 u_int		 image_get_id(struct image *);
 void		 image_ref(struct image *);
 void		 image_free(struct image *);
-void		 image_get_size(struct image *, u_int *, u_int *);
-void		 image_get_canvas_size(struct image *, u_int *, u_int *);
-void		 image_get_size_in_cells(struct image *, u_int *, u_int *);
-const u_char	*image_get_pixels(struct image *, size_t *, size_t *);
+struct image_geom *image_get_geometry(struct image *);
+u_char		*image_get_pixels(struct image *, size_t *, size_t *);
+int		 image_get_bounds(struct image_geom *, u_int, u_int, u_int,
+		     u_int, u_int, u_int, struct image_bounds *);
+u_char		*image_get_pixel(struct image *, u_int, u_int, u_int, u_int);
 void		 image_size_in_cells(u_int, u_int, u_int, u_int, u_int *,
 		     u_int *);
 void		 image_get_pixel_area(struct image *, u_int, u_int, u_int,
@@ -102,20 +137,34 @@ void		 image_damage_screen(struct screen_write_ctx *, u_int, u_int,
 void		 image_write(struct screen_write_ctx *, struct image *, u_int);
 int		 image_grid_get_at(struct grid *, u_int, u_int, struct image **,
 		     u_int *, u_int *);
+const struct grid_cell *image_map_cell(struct tty *, struct grid *, u_int,
+		     u_int, const struct grid_cell *, struct grid_cell *, int *);
+void		 image_draw_line(struct tty *, struct screen *, u_int, u_int,
+		     u_int, u_int, u_int);
+void		 image_redraw_start(struct tty *, u_int, u_int, u_int, u_int);
+void		 image_draw_flush(struct tty *);
+int		 image_tty_update(struct tty *);
+int		 image_backend_get_flags(struct tty *);
+void		 image_tty_size_changed(struct tty *);
+void		 image_tty_free(struct tty *);
 
 /* image-fallback.c */
+int		 fallback_select(struct tty *);
+int		 fallback_get_flags(struct tty *);
 const struct grid_cell *fallback_map_cell(struct tty *, struct grid *, u_int,
 		     u_int, const struct grid_cell *, struct grid_cell *, int *);
 
 /* image-sixel.c */
 #define SIXEL_COLOUR_REGISTERS 1024
-struct sixel_image *sixel_parse(const char *, size_t, u_int, u_int, u_int,
-		     u_int);
-void		 sixel_free(struct sixel_image *);
-void		 sixel_log(struct sixel_image *);
-struct image	*sixel_to_image(struct sixel_image *);
+int		 sixel_select(struct tty *);
+int		 sixel_get_flags(struct tty *);
+struct sixel_image *sixel_parse(const char *, size_t, u_int, u_int, u_int);
 void		 sixel_write(struct screen_write_ctx *, struct sixel_image *,
 		     u_int);
+void		 sixel_draw_rect(struct tty *, struct image_rect *);
+void		 sixel_start_draw(struct tty *, u_int, u_int, u_int, u_int);
+void		 sixel_free_pending(struct tty *);
+void		 sixel_flush_pending(struct tty *);
 
 #endif /* ENABLE_IMAGES */
 

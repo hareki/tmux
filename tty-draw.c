@@ -1,4 +1,4 @@
-/* $OpenBSD: tty-draw.c,v 1.18 2026/10/12 15:28:45 nicm Exp $ */
+/* $OpenBSD: tty-draw.c,v 1.19 2026/10/13 22:44:53 nicm Exp $ */
 
 /*
  * Copyright (c) 2026 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -264,7 +264,7 @@ tty_draw_line(struct tty *tty, struct screen *s, u_int px, u_int py, u_int nx,
 
 #ifdef ENABLE_IMAGES
 				/* Map an image cell if needed. */
-				gcp = fallback_map_cell(tty, gd, px + i,
+				gcp = image_map_cell(tty, gd, px + i,
 				    gd->hsize + py, gcp, &gc, &empty);
 #endif
 
@@ -278,7 +278,7 @@ tty_draw_line(struct tty *tty, struct screen *s, u_int px, u_int py, u_int nx,
 
 #ifdef ENABLE_IMAGES
 				/* Map an image cell if needed. */
-				gcp = fallback_map_cell(tty, gd, px + i,
+				gcp = image_map_cell(tty, gd, px + i,
 				    gd->hsize + py, gcp, &gc, NULL);
 #endif
 

@@ -1,4 +1,4 @@
-/* $OpenBSD: input.c,v 1.276 2026/10/13 10:21:58 nicm Exp $ */
+/* $OpenBSD: input.c,v 1.277 2026/10/14 16:23:43 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -2632,7 +2632,7 @@ input_dcs_dispatch(struct input_ctx *ictx)
 #ifdef ENABLE_IMAGES
 	struct window		*w;
 	struct sixel_image	*si;
-	int			 p1, p2;
+	int			 p2;
 #endif
 
 	if (wp == NULL)
@@ -2650,13 +2650,10 @@ input_dcs_dispatch(struct input_ctx *ictx)
 		w = wp->window;
 		if (input_split(ictx) != 0)
 			return (0);
-		p1 = input_get(ictx, 0, 0, 0);
-		if (p1 == -1)
-			p1 = 0;
 		p2 = input_get(ictx, 1, 0, 0);
 		if (p2 == -1)
 			p2 = 0;
-		si = sixel_parse(buf, len, p1, p2, w->xpixel, w->ypixel);
+		si = sixel_parse(buf, len, p2, w->xpixel, w->ypixel);
 		if (si != NULL)
 			sixel_write(sctx, si, ictx->cell.cell.bg);
 	}
@@ -2800,15 +2797,17 @@ input_exit_apc(struct input_ctx *ictx)
 {
 	struct screen_write_ctx	*sctx = &ictx->ctx;
 	struct window_pane	*wp = ictx->wp;
+	u_char			*buf = ictx->input_buf;
+	size_t			 len = ictx->input_len;
 
 	if (ictx->flags & INPUT_DISCARD)
 		return;
-	log_debug("%s: \"%s\"", __func__, ictx->input_buf);
+	log_debug("%s: \"%s\" (size %zu)", __func__, buf, len);
 
 	if (wp != NULL &&
 	    options_get_number(wp->options, "allow-set-title") &&
-	    screen_set_title(sctx->s, ictx->input_buf, 1)) {
-		input_fire_pane_title_changed(wp, ictx->input_buf);
+	    screen_set_title(sctx->s, buf, 1)) {
+		input_fire_pane_title_changed(wp, buf);
 		server_redraw_window_borders(wp->window);
 		server_status_window(wp->window);
 	}

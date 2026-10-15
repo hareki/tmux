@@ -83,6 +83,181 @@ struct image_recover_row {
 	u_int			 source_y;
 };
 
+/* A backend to draw an image. */
+struct image_backend {
+	const char	*name;
+	int		(*get_flags)(struct tty *);
+	int		(*select)(struct tty *);
+	const struct grid_cell *(*map_cell)(struct tty *, struct grid *, u_int,
+			    u_int, const struct grid_cell *, struct grid_cell *,
+			    int *);
+	void		(*draw_rect)(struct tty *, struct image_rect *);
+	void		(*start_draw)(struct tty *, u_int, u_int, u_int, u_int);
+	void		(*flush)(struct tty *);
+	void		(*free)(struct tty *);
+};
+
+/* Backend definitions. */
+static struct image_backend image_backend_fallback = {
+	"fallback",
+	fallback_get_flags,
+	fallback_select,
+	fallback_map_cell,
+	NULL,
+	NULL,
+	NULL,
+	NULL
+};
+static struct image_backend image_backend_sixel = {
+	"sixel",
+	sixel_get_flags,
+	sixel_select,
+	NULL,
+	sixel_draw_rect,
+	sixel_start_draw,
+	sixel_flush_pending,
+	sixel_free_pending
+};
+
+/* Backends in order of preference. */
+static struct image_backend *image_backends[] = {
+	&image_backend_sixel,
+	&image_backend_fallback
+};
+
+/* Update the image backend. */
+int
+image_tty_update(struct tty *tty)
+{
+	struct image_backend	*backend;
+	u_int			 i;
+
+	for (i = 0; i < nitems(image_backends); i++) {
+		backend = image_backends[i];
+		if (backend->select(tty))
+			break;
+	}
+	if (tty->image_backend == backend)
+		return (0);
+
+	if (tty->image_backend != NULL && tty->image_backend->free != NULL)
+		tty->image_backend->free(tty);
+	tty->image_data = NULL;
+	tty->image_backend = backend;
+	return (1);
+}
+
+/* Get the flags for a terminal's image backend. */
+int
+image_backend_get_flags(struct tty *tty)
+{
+	image_tty_update(tty);
+	return (tty->image_backend->get_flags(tty));
+}
+
+/* Map an image grid cell to text for the selected backend. */
+const struct grid_cell *
+image_map_cell(struct tty *tty, struct grid *gd, u_int x, u_int y,
+    const struct grid_cell *gc, struct grid_cell *out, int *empty)
+{
+	image_tty_update(tty);
+	if (tty->image_backend->map_cell == NULL)
+		return (gc);
+	return (tty->image_backend->map_cell(tty, gd, x, y, gc, out, empty));
+}
+
+/* Draw a clipped part of one image span. */
+static void
+image_draw_span(struct image_backend *backend, struct tty *tty,
+    struct image_span *span, u_int start, u_int end, u_int px, u_int atx,
+    u_int aty)
+{
+	struct image_rect	 rect;
+
+	rect.image = span->placement->image;
+	rect.src_x = span->source_x + start - span->x;
+	rect.src_y = span->source_y;
+	rect.sx = end - start;
+	rect.sy = 1;
+	rect.dst_x = atx + start - px;
+	rect.dst_y = aty;
+	backend->draw_rect(tty, &rect);
+}
+
+/* Draw images in the visible part of one screen line. */
+void
+image_draw_line(struct tty *tty, struct screen *s, u_int px, u_int py,
+    u_int nx, u_int atx, u_int aty)
+{
+	struct image_backend	*backend;
+	struct image_line	*line;
+	struct image_span	*span;
+	u_int			 start, end, span_end;
+
+	image_tty_update(tty);
+	backend = tty->image_backend;
+	if (backend->draw_rect == NULL)
+		return;
+	if (py >= s->grid->sy)
+		return;
+	line = s->grid->linedata[s->grid->hsize + py].images;
+	if (line == NULL)
+		return;
+	end = px + nx;
+	TAILQ_FOREACH(span, &line->spans, line_entry) {
+		span_end = span->x + span->sx;
+		start = span->x;
+		if (start < px)
+			start = px;
+		if (start >= end || span_end <= px)
+			continue;
+		if (span_end > end)
+			span_end = end;
+		image_draw_span(backend, tty, span, start, span_end, px, atx,
+		    aty);
+	}
+}
+
+/* Clear old image pixels before redrawing a terminal area. */
+void
+image_redraw_start(struct tty *tty, u_int x, u_int y, u_int w, u_int h)
+{
+	image_tty_update(tty);
+	if (tty->image_backend->start_draw != NULL)
+		tty->image_backend->start_draw(tty, x, y, w, h);
+}
+
+/* Write pending image output to the terminal. */
+void
+image_draw_flush(struct tty *tty)
+{
+	image_tty_update(tty);
+	if (tty->image_backend->flush != NULL)
+		tty->image_backend->flush(tty);
+}
+
+/* Discard image backend state after a terminal size change. */
+void
+image_tty_size_changed(struct tty *tty)
+{
+	if (!image_tty_update(tty)) {
+		if (tty->image_backend->free != NULL)
+			tty->image_backend->free(tty);
+	}
+}
+
+/* Free image backend state for a terminal. */
+void
+image_tty_free(struct tty *tty)
+{
+	if (tty->image_backend != NULL) {
+		if (tty->image_backend->free != NULL)
+			tty->image_backend->free(tty);
+		tty->image_backend = NULL;
+		tty->image_data = NULL;
+	}
+}
+
 /* Get the placement store for a grid. */
 static struct image_store *
 image_store_get(struct grid *gd)
@@ -179,25 +354,25 @@ void
 image_grid_add(struct grid *gd, struct image *im, u_int x, u_int y,
     u_int src_x, u_int src_y, u_int sx, u_int sy)
 {
+	struct image_geom	*ig;
 	struct image_placement	*plmt;
 	struct image_line	*line;
 	u_int			 rows = gd->hsize + gd->sy, row;
-	u_int			 image_sx, image_sy;
 
 	if (sx == 0 || sy == 0 || x >= gd->sx || y >= rows)
 		return;
-	image_get_size_in_cells(im, &image_sx, &image_sy);
-	if (src_x >= image_sx || src_y >= image_sy)
+	ig = image_get_geometry(im);
+	if (src_x >= ig->sx || src_y >= ig->sy)
 		return;
 
 	if (sx > gd->sx - x)
 		sx = gd->sx - x;
-	if (sx > image_sx - src_x)
-		sx = image_sx - src_x;
+	if (sx > ig->sx - src_x)
+		sx = ig->sx - src_x;
 	if (sy > rows - y)
 		sy = rows - y;
-	if (sy > image_sy - src_y)
-		sy = image_sy - src_y;
+	if (sy > ig->sy - src_y)
+		sy = ig->sy - src_y;
 
 	plmt = image_placement_create(gd, im);
 	for (row = 0; row < sy; row++) {
@@ -401,6 +576,7 @@ image_grid_copy_area(struct grid *dst, u_int dx, u_int dy, struct grid *src,
 	struct image_copy_map	*maps = NULL;
 	struct image_placement	*plmt;
 	struct image_line	*src_line, *dst_line;
+	struct grid_line	*gl;
 	struct image_span	*span;
 	u_int			 nmaps = 0, row, start, end, span_end;
 
@@ -428,8 +604,10 @@ image_grid_copy_area(struct grid *dst, u_int dx, u_int dy, struct grid *src,
 				continue;
 			if (span_end > end)
 				span_end = end;
-			if (dst_line == NULL)
-				dst_line = image_line_get(&dst->linedata[dy + row]);
+			if (dst_line == NULL) {
+				gl = &dst->linedata[dy + row];
+				dst_line = image_line_get(gl);
+			}
 			plmt = image_copy_placement(dst, span->placement, &maps,
 			    &nmaps);
 			plmt->recover_from = 0;
@@ -509,10 +687,18 @@ image_redraw_all(struct screen_write_ctx *ctx)
 void
 image_redraw_scroll(struct screen_write_ctx *ctx)
 {
-	struct screen	*s = ctx->s;
-	u_int		 sx = screen_size_x(s), sy = s->rlower - s->rupper + 1;
+	struct screen		*s = ctx->s;
+	struct window_pane	*wp = ctx->wp;
+	u_int			 sx = screen_size_x(s);
+	u_int			 sy = s->rlower - s->rupper + 1;
 
-	image_redraw_area(ctx, 0, s->rupper, sx, sy);
+	if (wp == NULL)
+		return;
+	if (!image_grid_area_has_images(s->grid, 0,
+	    s->grid->hsize + s->rupper, sx, sy))
+		return;
+	redraw_damage_scroll(wp->window, wp->xoff,
+	    wp->yoff + s->rupper, sx, sy);
 }
 
 /* Redraw images under changed cells. */
@@ -553,16 +739,14 @@ static int
 image_cell_covers(struct image *new, u_int nx, u_int ny, struct image *old,
     u_int ox, u_int oy)
 {
-	u_int		 npx, npy, nsx, nsy, opx, opy, osx, osy, xx, yy;
-	u_int		 ncw, nch, ocw, och, ncx, ncy, ocx, ocy;
-	const u_char	*np, *op, *npixels, *opixels;
-	size_t		 nstride, ostride;
+	struct image_geom	*ng = image_get_geometry(new);
+	struct image_geom	*og = image_get_geometry(old);
+	u_int			 npx, npy, nsx, nsy, opx, opy, osx, osy, xx, yy;
+	const u_char		*np, *op, *npixels, *opixels;
+	size_t			 nstride, ostride;
 
-	image_get_canvas_size(new, &ncw, &nch);
-	image_get_canvas_size(old, &ocw, &och);
-	image_get_size_in_cells(new, &ncx, &ncy);
-	image_get_size_in_cells(old, &ocx, &ocy);
-	if (ncw / ncx != ocw / ocx || nch / ncy != och / ocy)
+	if (ng->canvas_width / ng->sx != og->canvas_width / og->sx ||
+	    ng->canvas_height / ng->sy != og->canvas_height / og->sy)
 		return (0);
 	image_get_pixel_area(new, nx, ny, 1, 1, &npx, &npy, &nsx, &nsy);
 	image_get_pixel_area(old, ox, oy, 1, 1, &opx, &opy, &osx, &osy);
@@ -652,10 +836,11 @@ image_extend_row(struct image_line *line, struct image_placement *plmt,
 void
 image_grid_resize_width(struct grid *gd, u_int new_sx)
 {
+	struct image_geom		*ig;
 	struct image_placement		*plmt;
 	struct image_span		*span;
 	struct image_recover_row	*rows;
-	u_int				 image_sx, image_sy, from, to;
+	u_int				 from, to;
 	u_int				 nrows, i;
 
 	if (gd->images == NULL)
@@ -664,11 +849,11 @@ image_grid_resize_width(struct grid *gd, u_int new_sx)
 		from = plmt->recover_from;
 		if (from == 0 || plmt->x >= new_sx)
 			continue;
-		image_get_size_in_cells(plmt->image, &image_sx, &image_sy);
+		ig = image_get_geometry(plmt->image);
 
 		to = new_sx - plmt->x;
-		if (to > image_sx)
-			to = image_sx;
+		if (to > ig->sx)
+			to = ig->sx;
 		if (to <= from)
 			continue;
 
@@ -691,7 +876,7 @@ image_grid_resize_width(struct grid *gd, u_int new_sx)
 			    rows[i].source_y, from, to);
 		}
 		free(rows);
-		plmt->recover_from = (to == image_sx ? 0 : to);
+		plmt->recover_from = (to == ig->sx ? 0 : to);
 	}
 }
 
@@ -699,18 +884,17 @@ image_grid_resize_width(struct grid *gd, u_int new_sx)
 void
 image_write(struct screen_write_ctx *ctx, struct image *im, u_int bg)
 {
+	struct image_geom	*ig = image_get_geometry(im);
 	struct screen		*s = ctx->s;
 	struct grid		*gd = s->grid;
 	struct image_placement	*plmt;
 	struct grid_line	*gl;
 	struct image_line	*line;
-	u_int			 cx = s->cx, cy = s->cy, y, sx, sy, lines;
-	u_int			 image_sx;
+	u_int			 cx = s->cx, cy = s->cy, y, lines;
+	u_int			 sx = ig->sx, sy = ig->sy;
 	u_int			 origin_y = 0, h_origin_y, region_height;
 	u_int			 remaining, n;
 
-	image_get_size_in_cells(im, &sx, &sy);
-	image_sx = sx;
 	if (sx > screen_size_x(s) - cx)
 		sx = screen_size_x(s) - cx;
 	if (sx == 0)
@@ -742,7 +926,7 @@ image_write(struct screen_write_ctx *ctx, struct image *im, u_int bg)
 		sy -= origin_y;
 	}
 	plmt = image_placement_create(gd, im);
-	if (sx < image_sx) {
+	if (sx < ig->sx) {
 		plmt->x = cx;
 		plmt->recover_from = sx;
 	}
