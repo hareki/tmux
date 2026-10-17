@@ -1,4 +1,4 @@
-/* $OpenBSD: input.c,v 1.277 2026/10/14 16:23:43 nicm Exp $ */
+/* $OpenBSD: input.c,v 1.278 2026/10/16 11:34:49 bket Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -144,6 +144,9 @@ struct input_ctx {
 	 */
 	struct evbuffer			*since_ground;
 	struct event			 ground_timer;
+#ifdef ENABLE_IMAGES
+	void				*kitty_state;
+#endif
 };
 
 /* Helper functions. */
@@ -826,7 +829,6 @@ input_start_ground_timer(struct input_ctx *ictx)
 {
 	struct timeval	tv = { .tv_sec = 5, .tv_usec = 0 };
 
-	event_del(&ictx->ground_timer);
 	event_add(&ictx->ground_timer, &tv);
 }
 
@@ -914,6 +916,9 @@ input_free(struct input_ctx *ictx)
 	event_del(&ictx->request_timer);
 
 	free(ictx->input_buf);
+#ifdef ENABLE_IMAGES
+	kitty_free_state(ictx->kitty_state);
+#endif
 	evbuffer_free(ictx->since_ground);
 	event_del(&ictx->ground_timer);
 
@@ -1173,7 +1178,7 @@ input_send_reply(struct input_ctx *ictx, const char *reply)
 }
 
 /* Reply to terminal query. */
-static void printflike(3, 4)
+void printflike(3, 4)
 input_reply(struct input_ctx *ictx, int add, const char *fmt, ...)
 {
 	struct input_request	*ir;
@@ -2804,6 +2809,14 @@ input_exit_apc(struct input_ctx *ictx)
 		return;
 	log_debug("%s: \"%s\" (size %zu)", __func__, buf, len);
 
+#ifdef ENABLE_IMAGES
+	if (wp != NULL && len > 1 && buf[0] == 'G') {
+		kitty_parse_input(ictx, wp, sctx, ictx->cell.cell.bg,
+		    &ictx->kitty_state, buf, len);
+		return;
+	}
+#endif
+
 	if (wp != NULL &&
 	    options_get_number(wp->options, "allow-set-title") &&
 	    screen_set_title(sctx->s, buf, 1)) {
@@ -3588,7 +3601,6 @@ input_start_request_timer(struct input_ctx *ictx)
 {
 	struct timeval	tv = { .tv_sec = 0, .tv_usec = 100000 };
 
-	event_del(&ictx->request_timer);
 	event_add(&ictx->request_timer, &tv);
 }
 

@@ -1,4 +1,4 @@
-/* $OpenBSD: tty.c,v 1.489 2026/10/14 12:48:50 nicm Exp $ */
+/* $OpenBSD: tty.c,v 1.494 2026/10/16 16:56:03 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -337,7 +337,6 @@ tty_start_start_timer(struct tty *tty)
 	struct timeval	 tv = { .tv_sec = TTY_QUERY_TIMEOUT };
 
 	log_debug("%s: start timer started", c->name);
-	evtimer_del(&tty->start_timer);
 	evtimer_add(&tty->start_timer, &tv);
 }
 
@@ -391,11 +390,8 @@ tty_start_tty(struct tty *tty)
 	}
 	if (tty_term_has(tty->term, TTYC_ENBP))
 		tty_putcode(tty, TTYC_ENBP);
-
-	if (tty->term->flags & TERM_VT100LIKE) {
-		/* Subscribe to theme changes and request theme now. */
+	if (tty->term->flags & TERM_VT100LIKE)
 		tty_puts(tty, "\033[?2031h\033[?996n");
-	}
 
 	tty_start_start_timer(tty);
 
@@ -413,22 +409,31 @@ tty_start_tty(struct tty *tty)
 void
 tty_send_requests(struct tty *tty)
 {
-	if (~tty->flags & TTY_STARTED)
+	struct tty_term	*term = tty->term;
+	int		 flags = tty->flags;
+
+	if (~flags & TTY_STARTED)
 		return;
 
-	if (tty->term->flags & TERM_VT100LIKE) {
-		if (~tty->flags & TTY_HAVEDA)
-			tty_puts(tty, "\033[c");
-		if (~tty->flags & TTY_HAVEDA2)
-			tty_puts(tty, "\033[>c");
-		if (~tty->flags & TTY_HAVEXDA)
-			tty_puts(tty, "\033[>q");
-		if (~tty->flags & TTY_HAVESYNC)
-			tty_puts(tty, "\033[?2026$p");
-		tty_puts(tty, "\033]10;?\033\\\033]11;?\033\\");
-		tty->flags |= (TTY_WAITBG|TTY_WAITFG);
-	} else
+	if (~term->flags & TERM_VT100LIKE) {
 		tty->flags |= TTY_ALL_REQUEST_FLAGS;
+		tty->last_requests = time(NULL);
+		return;
+	}
+
+	if (~flags & TTY_HAVEDA)
+		tty_puts(tty, "\033[c");
+	if (~flags & TTY_HAVEDA2)
+		tty_puts(tty, "\033[>c");
+	if (~flags & TTY_HAVEXDA)
+		tty_puts(tty, "\033[>q");
+	if (~flags & TTY_HAVESYNC)
+		tty_puts(tty, "\033[?2026$p");
+	tty->flags |= TTY_HAVEKITTYGRAPHICS;
+
+	tty_puts(tty, "\033]10;?\033\\\033]11;?\033\\");
+	tty->flags |= (TTY_WAITBG|TTY_WAITFG);
+
 	tty->last_requests = time(NULL);
 }
 
@@ -971,7 +976,11 @@ tty_window_bigger(struct tty *tty)
 	struct client	*c = tty->client;
 	struct window	*w = c->session->curw->window;
 
-	return (tty->sx < w->sx || tty->sy - status_line_size(c) < w->sy);
+	if (tty->sx - status_side_size(c) < w->sx)
+		return (1);
+	if (tty->sy - status_line_size(c) < w->sy)
+		return (1);
+	return (0);
 }
 
 /* What offset should this window be drawn at? */
@@ -993,11 +1002,12 @@ tty_window_offset1(struct tty *tty, u_int *ox, u_int *oy, u_int *sx, u_int *sy)
 	struct client		*c = tty->client;
 	struct window		*w = c->session->curw->window;
 	struct window_pane	*wp = w->active;
-	u_int			 cx, cy, lines;
+	u_int			 cx, cy, lines, side;
 
 	lines = status_line_size(c);
+	side = status_side_size(c);
 
-	if (tty->sx >= w->sx && tty->sy - lines >= w->sy) {
+	if (tty->sx - side >= w->sx && tty->sy - lines >= w->sy) {
 		*ox = 0;
 		*oy = 0;
 		*sx = w->sx;
@@ -1007,7 +1017,7 @@ tty_window_offset1(struct tty *tty, u_int *ox, u_int *oy, u_int *sx, u_int *sy)
 		return (0);
 	}
 
-	*sx = tty->sx;
+	*sx = tty->sx - side;
 	*sy = tty->sy - lines;
 
 	if (c->pan_window == w) {
@@ -1189,19 +1199,19 @@ tty_clamp_line(struct tty *tty, const struct tty_ctx *ctx, u_int px, u_int py,
 		*rx = nx;
 	} else if (xoff < (int)ctx->wox && xoff + nx > ctx->wox + ctx->wsx) {
 		/* Both left and right not visible. */
-		*i = ctx->wox;
-		*x = 0;
+		*i = ctx->wox - xoff;
+		*x = ctx->xoff - ctx->rxoff;
 		*rx = ctx->wsx;
 	} else if (xoff < (int)ctx->wox) {
 		/* Left not visible. */
-		*i = ctx->wox - (ctx->xoff + px);
-		*x = 0;
+		*i = ctx->wox - xoff;
+		*x = ctx->xoff - ctx->rxoff;
 		*rx = nx - *i;
 	} else {
 		/* Right not visible. */
 		*i = 0;
 		*x = (ctx->xoff + px) - ctx->wox;
-		*rx = ctx->wsx - *x;
+		*rx = ctx->wox + ctx->wsx - xoff;
 	}
 	if (*rx > nx)
 		fatalx("%s: x too big, %u > %u", __func__, *rx, nx);
@@ -1283,19 +1293,19 @@ tty_clamp_area(struct tty *tty, const struct tty_ctx *ctx, u_int px, u_int py,
 		*rx = nx;
 	} else if (xoff < ctx->wox && xoff + nx > ctx->wox + ctx->wsx) {
 		/* Both left and right not visible. */
-		*i = ctx->wox;
-		*x = 0;
+		*i = ctx->wox - xoff;
+		*x = ctx->xoff - ctx->rxoff;
 		*rx = ctx->wsx;
 	} else if (xoff < ctx->wox) {
 		/* Left not visible. */
-		*i = ctx->wox - (ctx->xoff + px);
-		*x = 0;
+		*i = ctx->wox - xoff;
+		*x = ctx->xoff - ctx->rxoff;
 		*rx = nx - *i;
 	} else {
 		/* Right not visible. */
 		*i = 0;
 		*x = (ctx->xoff + px) - ctx->wox;
-		*rx = ctx->wsx - *x;
+		*rx = ctx->wox + ctx->wsx - xoff;
 	}
 	if (*rx > nx)
 		fatalx("%s: x too big, %u > %u", __func__, *rx, nx);
@@ -1936,8 +1946,8 @@ tty_cmd_cells(struct tty *tty, const struct tty_ctx *ctx)
 		return;
 
 	if ((ctx->flags & TTY_CTX_WINDOW_BIGGER) &&
-	    (ctx->xoff + ctx->ocx < ctx->wox ||
-	    ctx->xoff + ctx->ocx + n > ctx->wox + ctx->wsx)) {
+	    (ctx->rxoff + ctx->ocx < ctx->wox ||
+	    ctx->rxoff + ctx->ocx + n > ctx->wox + ctx->wsx)) {
 		if ((~ctx->flags & TTY_CTX_WRAPPED) ||
 		    !tty_full_width(tty, ctx) ||
 		    (tty->term->flags & TERM_NOAM) ||
@@ -2129,10 +2139,11 @@ tty_margin_off(struct tty *tty)
 static void
 tty_margin_pane(struct tty *tty, const struct tty_ctx *ctx)
 {
+	u_int	xoff = ctx->xoff - ctx->rxoff;
 	int	l, r;
 
-	l = ctx->xoff - ctx->wox;
-	r = ctx->xoff + ctx->sx - 1 - ctx->wox;
+	l = ctx->rxoff - ctx->wox;
+	r = ctx->rxoff + ctx->sx - 1 - ctx->wox;
 
 	if (l < 0)
 		l = 0;
@@ -2143,7 +2154,7 @@ tty_margin_pane(struct tty *tty, const struct tty_ctx *ctx)
 	if (r > (int)ctx->wsx)
 		r = ctx->wsx;
 
-	tty_margin(tty, l, r);
+	tty_margin(tty, xoff + l, xoff + r);
 }
 
 /* Set margin at absolute position. */
