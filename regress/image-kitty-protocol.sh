@@ -56,15 +56,17 @@ while time.monotonic() < deadline:
             break
 else:
     raise SystemExit('missing device-attributes reply')
-with open(output, 'w') as f:
+with open(output + '.tmp', 'w') as f:
     json.dump(reply.split(b'\\x1b[?')[0].decode(), f)
+os.replace(output + '.tmp', output)
 time.sleep(30)
 '''
 
 # Check replies, cursor movement and unchanged text and title.
 def check(name, command, expected, cursor='5,2', timeout=10):
-    output = directory / name
-    command_file = directory / (name + '.input')
+    case = Path(tempfile.mkdtemp(dir=directory))
+    output = case / 'reply'
+    command_file = case / 'input'
     with command_file.open('w', encoding='utf-8') as f:
         f.write(origin)
         if isinstance(command, str):
