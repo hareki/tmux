@@ -1,6 +1,8 @@
 # configure.ac
 
-AC_INIT([tmux], next-3.9)
+# Pretend to be 3.8 so tmuxinator stops warning about an unsupported version.
+# AC_INIT([tmux], next-3.9)
+AC_INIT([tmux], next-3.8)
 AC_PREREQ([2.60])
 
 AC_CONFIG_AUX_DIR(etc)
