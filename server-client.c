@@ -1,4 +1,4 @@
-/* $OpenBSD: server-client.c,v 1.528 2026/10/26 10:14:59 nicm Exp $ */
+/* $OpenBSD: server-client.c,v 1.530 2026/10/27 13:00:14 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -46,6 +46,9 @@ static void	server_client_set_progress_bar(struct client *);
 static void	server_client_reset_state(struct client *);
 static void	server_client_update_latest(struct client *);
 static int	server_client_handle_dead_key(struct window_pane *, key_code);
+static int	server_client_handle_key0(struct client *, struct key_event *,
+		    struct cmdq_item *, struct cmdq_item **, int);
+static enum cmd_retval	server_client_key_callback(struct cmdq_item *, void *);
 static void	server_client_dispatch(struct imsg *, void *);
 static int	server_client_dispatch_command(struct client *, struct imsg *);
 static int	server_client_dispatch_identify(struct client *, struct imsg *);
@@ -786,11 +789,14 @@ server_client_check_mouse_status(struct client *c, struct mouse_event *m,
     enum key_code_type type, u_int x, u_int y,
     enum key_code_mouse_location *loc)
 {
-	struct winlink		*fwl;
-	struct window_pane	*fwp;
-	struct session		*s = c->session, *fs;
-	struct style_range	*sr;
-	u_int			 n, sidey, separator;
+	struct tty			*tty = &c->tty;
+	struct winlink			*fwl;
+	struct window_pane		*fwp;
+	struct session			*s = c->session, *fs;
+	struct style_range		*sr;
+	u_int				 n, sidey, separator;
+	int				 side = 0, mflag = tty->mouse_drag_flag;
+	enum key_code_mouse_location	 mloc = tty->mouse_drag_location;
 
 	*loc = KEYC_MOUSE_LOCATION_NOWHERE;
 
@@ -798,9 +804,9 @@ server_client_check_mouse_status(struct client *c, struct mouse_event *m,
 	m->statuslines = status_line_size(c);
 	m->sideat = status_side_at_column(c);
 	m->sidewidth = status_side_size(c);
-	if (c->tty.mouse_drag_flag != 0 &&
-	    c->tty.mouse_drag_location == KEYC_MOUSE_LOCATION_STATUS_BORDER) {
-		*loc = KEYC_MOUSE_LOCATION_STATUS_BORDER;
+
+	if (mflag != 0 && mloc == KEYC_MOUSE_LOCATION_SIDE_STATUS_BORDER) {
+		*loc = KEYC_MOUSE_LOCATION_SIDE_STATUS_BORDER;
 		return (0);
 	}
 
@@ -824,31 +830,44 @@ server_client_check_mouse_status(struct client *c, struct mouse_event *m,
 		if (separator == 0)
 			separator = m->sidewidth - 1;
 		if (m->sidewidth > 1 && x == separator) {
-			*loc = KEYC_MOUSE_LOCATION_STATUS_BORDER;
-			if (type == KEYC_TYPE_MOUSEDRAG &&
-			    c->tty.mouse_drag_flag == 0)
-				c->tty.mouse_drag_status = 1;
+			*loc = KEYC_MOUSE_LOCATION_SIDE_STATUS_BORDER;
+			if (type == KEYC_TYPE_MOUSEDRAG && mflag == 0)
+				tty->mouse_drag_status = 1;
 			return (0);
 		}
+		side = 1;
 		sr = status_side_get_range(c, x - m->sideat, y - sidey);
 	}
-	if (type == KEYC_TYPE_MOUSEDRAG && c->tty.mouse_drag_flag == 0)
-		c->tty.mouse_drag_status = 1;
+	if (type == KEYC_TYPE_MOUSEDRAG && mflag == 0)
+		tty->mouse_drag_status = 1;
 	if (sr == NULL) {
-		*loc = KEYC_MOUSE_LOCATION_STATUS_DEFAULT;
+		if (side)
+			*loc = KEYC_MOUSE_LOCATION_SIDE_STATUS_DEFAULT;
+		else
+			*loc = KEYC_MOUSE_LOCATION_STATUS_DEFAULT;
 		return (0);
 	}
 
+	if (side)
+		*loc = KEYC_MOUSE_LOCATION_SIDE_STATUS;
+	else
+		*loc = KEYC_MOUSE_LOCATION_STATUS;
 	switch (sr->type) {
 	case STYLE_RANGE_NONE:
 		return (-1);
 	case STYLE_RANGE_LEFT:
 		log_debug("mouse range: left");
-		*loc = KEYC_MOUSE_LOCATION_STATUS_LEFT;
+		if (side)
+			*loc = KEYC_MOUSE_LOCATION_SIDE_STATUS_LEFT;
+		else
+			*loc = KEYC_MOUSE_LOCATION_STATUS_LEFT;
 		break;
 	case STYLE_RANGE_RIGHT:
 		log_debug("mouse range: right");
-		*loc = KEYC_MOUSE_LOCATION_STATUS_RIGHT;
+		if (side)
+			*loc = KEYC_MOUSE_LOCATION_SIDE_STATUS_RIGHT;
+		else
+			*loc = KEYC_MOUSE_LOCATION_STATUS_RIGHT;
 		break;
 	case STYLE_RANGE_PANE:
 		fwp = window_pane_find_by_id(sr->argument);
@@ -857,7 +876,6 @@ server_client_check_mouse_status(struct client *c, struct mouse_event *m,
 		m->wp = sr->argument;
 
 		log_debug("mouse range: pane %%%u", m->wp);
-		*loc = KEYC_MOUSE_LOCATION_STATUS;
 		break;
 	case STYLE_RANGE_WINDOW:
 		fwl = winlink_find_by_index(&s->windows, sr->argument);
@@ -866,7 +884,6 @@ server_client_check_mouse_status(struct client *c, struct mouse_event *m,
 		m->w = fwl->window->id;
 
 		log_debug("mouse range: window @%u", m->w);
-		*loc = KEYC_MOUSE_LOCATION_STATUS;
 		break;
 	case STYLE_RANGE_SESSION:
 		fs = session_find_by_id(sr->argument);
@@ -875,24 +892,25 @@ server_client_check_mouse_status(struct client *c, struct mouse_event *m,
 		m->s = sr->argument;
 
 		log_debug("mouse range: session $%u", m->s);
-		*loc = KEYC_MOUSE_LOCATION_STATUS;
 		break;
 	case STYLE_RANGE_USER:
 		log_debug("mouse range: user");
-		*loc = KEYC_MOUSE_LOCATION_STATUS;
 		break;
 	case STYLE_RANGE_CONTROL:
 		n = sr->argument; /* parsing keeps this < 10 */
 		log_debug("mouse range: control %u", n);
-		*loc = KEYC_MOUSE_LOCATION_CONTROL0 + n;
+		if (side)
+			*loc = KEYC_MOUSE_LOCATION_SIDE_STATUS_CONTROL0 + n;
+		else
+			*loc = KEYC_MOUSE_LOCATION_CONTROL0 + n;
 		break;
 	}
 	return (0);
 
 not_on_status:
 	/* Keep drags started on status lines from triggering pane bindings. */
-	if (type == KEYC_TYPE_MOUSEDRAG && c->tty.mouse_drag_status)
-		*loc = c->tty.mouse_drag_location;
+	if (type == KEYC_TYPE_MOUSEDRAG && tty->mouse_drag_status)
+		*loc = mloc;
 	return (0);
 }
 
@@ -1217,7 +1235,9 @@ have_event:
 
 	if (key == KEYC_UNKNOWN) {
 		/* Adjust the button number. */
-		if (MOUSE_BUTTONS(b) == MOUSE_BUTTON_1)
+		if (type == KEYC_TYPE_MOUSEMOVE)
+			bn = 0;
+		else if (MOUSE_BUTTONS(b) == MOUSE_BUTTON_1)
 			bn = 1;
 		else if (MOUSE_BUTTONS(b) == MOUSE_BUTTON_2)
 			bn = 2;
@@ -1443,6 +1463,11 @@ server_client_key_callback(struct cmdq_item *item, void *data)
 	/* Check the client is good to accept input. */
 	if (s == NULL || (c->flags & CLIENT_UNATTACHEDFLAGS))
 		goto out;
+
+	/* Recheck input handlers opened by earlier queued commands. */
+	if (server_client_handle_key0(c, event, NULL, NULL, 1) == 0)
+		goto out;
+
 	wl = s->curw;
 
 	/* Update the activity timer. */
@@ -1636,12 +1661,7 @@ try_again:
 	 * Binding movement keys is useless since we only turn them on when the
 	 * application requests, so don't let them exit the prefix table.
 	 */
-	if (key == KEYC_MOUSEMOVE_PANE ||
-	    key == KEYC_MOUSEMOVE_STATUS ||
-	    key == KEYC_MOUSEMOVE_STATUS_LEFT ||
-	    key == KEYC_MOUSEMOVE_STATUS_RIGHT ||
-	    key == KEYC_MOUSEMOVE_STATUS_DEFAULT ||
-	    key == KEYC_MOUSEMOVE_BORDER)
+	if (KEYC_IS_TYPE(key, KEYC_TYPE_MOUSEMOVE))
 		goto forward_key;
 
 	/*
@@ -1745,16 +1765,21 @@ server_client_handle_menu_key(struct client *c, struct key_event *event)
 	return (1);
 }
 
-/* Handle a key event. */
+/* Handle a key; check skips queueing. Returns 0 if used, 1 otherwise. */
 static int
 server_client_handle_key0(struct client *c, struct key_event *event,
-    struct cmdq_item *after, struct cmdq_item **next)
+    struct cmdq_item *after, struct cmdq_item **next, int check)
 {
 	struct session		*s = c->session;
 	struct mouse_event	*m = &event->m;
 	struct cmdq_item	*item;
 	struct window_pane	*wp;
 	key_code		 key;
+	enum key_event_delivery	 d = event->delivered;
+
+	/* A consumed key only needs to be freed by the callback. */
+	if (check && d == KEY_EVENT_CONSUMED)
+		return (0);
 
 	/* Check the client is good to accept input. */
 	if (s == NULL || (c->flags & CLIENT_UNATTACHEDFLAGS))
@@ -1770,9 +1795,9 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 	}
 
 	/*
-	 * Dead panes waiting for a key, modal cancel keys, panes capturing all keys
-	 * and the command prompt are special cases. The queue might be blocked so
-	 * they need to be processed immediately rather than queued.
+	 * Dead panes waiting for a key, modal cancel keys, panes capturing all
+	 * keys and the command prompt are special cases. The queue might be
+	 * blocked so they need to be processed immediately rather than queued.
 	 */
 	if (~c->flags & CLIENT_READONLY) {
 		if (c->message_string != NULL) {
@@ -1799,7 +1824,8 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 			key = event->key;
 			if (KEYC_IS_MOUSE(key)) {
 				key = server_client_check_mouse(c, event);
-				if (key == KEYC_UNKNOWN || (u_int)m->wp != wp->id)
+				if (key == KEYC_UNKNOWN ||
+				    (u_int)m->wp != wp->id)
 					return (0);
 				m->valid = 1;
 				m->key = key;
@@ -1810,7 +1836,7 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 
 		if (server_client_handle_menu_key(c, event))
 			return (0);
-		if (c->prompt != NULL) {
+		if (d == KEY_EVENT_NOT_OFFERED && c->prompt != NULL) {
 			switch (status_prompt_key(c, event->key, &event->m)) {
 			case PROMPT_KEY_HANDLED:
 			case PROMPT_KEY_CLOSE:
@@ -1829,7 +1855,8 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 					break;
 			}
 		}
-		if (wp != NULL &&
+		if (d == KEY_EVENT_NOT_OFFERED &&
+		    wp != NULL &&
 		    window_pane_has_prompt(wp) &&
 		    window_pane_is_visible(wp)) {
 			switch (window_pane_prompt_key(wp, c, event->key,
@@ -1845,12 +1872,15 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 			}
 		}
 	}
+	if (check)
+		return (1);
 
 	/*
-	 * Add the key to the queue so it happens after any commands queued by
-	 * previous keys.
+	 * Queue after earlier commands. Mark injected keys too, so waiting
+	 * prompts can consume them.
 	 */
 	item = cmdq_get_callback(server_client_key_callback, event);
+	cmdq_add_flags(item, CMDQ_KEY);
 	if (after != NULL) {
 		event->client = c;
 		c->references++;
@@ -1863,11 +1893,36 @@ server_client_handle_key0(struct client *c, struct key_event *event,
 	return (1);
 }
 
+/* Offer a queued key once. Returns 0 if used, 1 otherwise. */
+int
+server_client_key_prompt(struct cmdq_item *item, void *data)
+{
+	struct key_event	*event = data;
+	struct client		*c = event->client;
+	int			 ret;
+
+	if (event->delivered != KEY_EVENT_NOT_OFFERED) {
+		if (event->delivered == KEY_EVENT_CONSUMED)
+			return (0);
+		return (1);
+	}
+	if (c == NULL)
+		c = cmdq_get_client(item);
+	if (c == NULL)
+		return (1);
+	ret = server_client_handle_key0(c, event, NULL, NULL, 1);
+	if (ret == 0)
+		event->delivered = KEY_EVENT_CONSUMED;
+	else
+		event->delivered = KEY_EVENT_NOT_CONSUMED;
+	return (ret);
+}
+
 /* Handle key and insert at end of queue. */
 int
 server_client_handle_key(struct client *c, struct key_event *event)
 {
-	return (server_client_handle_key0(c, event, NULL, NULL));
+	return (server_client_handle_key0(c, event, NULL, NULL, 0));
 }
 
 /* Handle key and insert after another item. */
@@ -1875,7 +1930,7 @@ int
 server_client_handle_key_after(struct client *c, struct key_event *event,
     struct cmdq_item *after, struct cmdq_item **next)
 {
-	return (server_client_handle_key0(c, event, after, next));
+	return (server_client_handle_key0(c, event, after, next, 0));
 }
 
 /* Client functions that need to happen every loop. */
