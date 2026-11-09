@@ -130,7 +130,9 @@ static const char *options_table_copy_mode_line_numbers_list[] = {
 	"#[pop-default]" \
 	"#[norange default]" \
 	"#[list=on align=#{status-justify}]" \
-	"#[list=left-marker]<#[list=right-marker]>#[list=on]" \
+	"#[list=left-marker]#{E:status-list-left-marker}#[default]" \
+	"#[list=right-marker]#{E:status-list-right-marker}#[default]" \
+	"#[list=on]" \
 	"#{W:" \
 		"#[range=window|#{window_index} " \
 			"#{E:window-status-style}" \
@@ -193,7 +195,9 @@ static const char *options_table_copy_mode_line_numbers_list[] = {
 	"#{R: ,#{e|-:#{w;T;=/#{status-left-length}:status-left},3}}P: " \
 	"#[norange default]" \
 	"#[list=on align=#{status-justify}]" \
-	"#[list=left-marker]<#[list=right-marker]>#[list=on]" \
+	"#[list=left-marker]#{E:status-list-left-marker}#[default]" \
+	"#[list=right-marker]#{E:status-list-right-marker}#[default]" \
+	"#[list=on]" \
 	"#{P:" \
 		"#[range=pane|#{pane_id} " \
 			"#{E:pane-status-style}" \
@@ -221,7 +225,9 @@ static const char *options_table_copy_mode_line_numbers_list[] = {
 	"#{R: ,#{e|-:#{w;T;=/#{status-left-length}:status-left},3}}S: " \
 	"#[norange default]" \
 	"#[list=on align=#{status-justify}]" \
-	"#[list=left-marker]<#[list=right-marker]>#[list=on]" \
+	"#[list=left-marker]#{E:status-list-left-marker}#[default]" \
+	"#[list=right-marker]#{E:status-list-right-marker}#[default]" \
+	"#[list=on]" \
 	"#{S:" \
 		"#[range=session|#{session_id} " \
 			"#{E:session-status-style}" \
@@ -1214,6 +1220,22 @@ const struct options_table_entry options_table[] = {
 	  .flags = OPTIONS_TABLE_IS_STYLE,
 	  .separator = ",",
 	  .text = "Style of the left side of the status line."
+	},
+
+	{ .name = "status-list-left-marker",
+	  .type = OPTIONS_TABLE_STRING,
+	  .scope = OPTIONS_TABLE_SESSION,
+	  .default_str = "<",
+	  .text = "Marker drawn when the status line list is cut off on the "
+		  "left."
+	},
+
+	{ .name = "status-list-right-marker",
+	  .type = OPTIONS_TABLE_STRING,
+	  .scope = OPTIONS_TABLE_SESSION,
+	  .default_str = ">",
+	  .text = "Marker drawn when the status line list is cut off on the "
+		  "right."
 	},
 
 	{ .name = "status-position",
